@@ -60,7 +60,8 @@
   let cfg = defaults(),
     selected = defaultMethods.slice(),
     focus = "grpo";
-  const playbackPaces = [4800, 2400, 1200, 600, 400, 300];
+  const playbackPaces = [4800, 2400, 1200, 600, 400, 300],
+    horizons = [25, 100, 300, 1000];
   let pace = 1200,
     horizon = 100,
     sim,
@@ -115,7 +116,10 @@
   function validateSetup(data) {
     if (!data || typeof data !== "object" || Array.isArray(data))
       throw Error("A setup must be an object.");
-    const config = LabConfig.validate(data.cfg || defaults());
+    const given = data.cfg ?? {};
+    if (typeof given !== "object" || Array.isArray(given))
+      throw Error("A setup must be a JSON object.");
+    const config = LabConfig.validate({ ...defaults(), ...given });
     if (
       config.model !== "independent" ||
       config.layout !== "quality" ||
@@ -137,7 +141,7 @@
       throw Error("Choose at least one valid algorithm, with no duplicates.");
     if (
       !playbackPaces.includes(data.pace ?? 1200) ||
-      ![25, 100, 300].includes(data.horizon ?? 100)
+      !horizons.includes(data.horizon ?? 100)
     )
       throw Error("Invalid playback settings.");
     return {
@@ -285,7 +289,7 @@
     $("map-note").textContent =
       `Training score ↑. ${LabContent.transformNotes[type]} ${dependent ? "Preview uses one of each reward; actual scores are refitted to every sampled group. Normal scores do not make the policy Gaussian." : "This maps scores, not probabilities."} MaxRL bypasses this map and thresholds the judge score at 0.9.`;
   }
-  function apply(data) {
+  function apply(data, keepOpen = false) {
     const valid = validateSetup(data);
     pause();
     ({ cfg, pace, horizon, focus } = valid);
@@ -293,37 +297,96 @@
     closeDistribution();
     reset();
     writeForm();
-    $("advanced").open = false;
+    if (!keepOpen) $("advanced").open = false;
     // A copied setup describes the committed controls, never a half-edited form.
     history.replaceState(null, "", location.pathname + location.hash);
   }
-  $("settings").addEventListener("submit", (event) => {
-    event.preventDefault();
+  function readForm() {
+    const input = { ...cfg };
+    for (const key of numericFields) {
+      if (!$(key).value.trim()) throw Error(`${key} needs a value.`);
+      input[key] = Number($(key).value);
+    }
+    for (const key of ["transform", "judge"]) input[key] = $(key).value;
+    input.preset = $("preset").value;
+    input.evalK = input.k;
+    return input;
+  }
+  // Simulation settings restart the run, so they commit as soon as a field
+  // changes; nothing waits for the panel to close.
+  function commitForm(keepOpen) {
     try {
-      const input = { ...cfg };
-      for (const key of numericFields) {
-        if (!$(key).value.trim()) throw Error(`${key} needs a value.`);
-        input[key] = Number($(key).value);
-      }
-      for (const key of ["transform", "judge"]) input[key] = $(key).value;
-      input.preset = $("preset").value;
-      input.evalK = input.k;
-      apply({
-        cfg: input,
-        methods: [...document.querySelectorAll('[name="method"]:checked')].map(
-          (el) => el.value,
-        ),
-        focus,
-        pace,
-        horizon: Number($("horizon").value),
-      });
+      apply(
+        {
+          cfg: readForm(),
+          methods: [
+            ...document.querySelectorAll('[name="method"]:checked'),
+          ].map((el) => el.value),
+          focus,
+          pace,
+          horizon: Number($("horizon").value),
+        },
+        keepOpen,
+      );
+      if (keepOpen) setStatus("Settings applied. The run restarted at update 0.");
     } catch (error) {
       $("settings-error").textContent = error.message;
       $("settings-error").hidden = false;
       $("settings-error").scrollIntoView({ block: "nearest" });
     }
+  }
+  $("settings").addEventListener("submit", (event) => {
+    event.preventDefault();
+    commitForm(false);
+  });
+  $("settings").addEventListener("change", (event) => {
+    // Algorithms and run length have their own handlers and keep the run.
+    if (event.target.matches('#horizon, [name="method"]')) return;
+    commitForm(true);
   });
   $("settings").addEventListener("input", previewMap);
+  // Every algorithm is simulated on each update, so the comparison can change
+  // without restarting the run.
+  $("method-options").addEventListener("change", (event) => {
+    const checked = [
+      ...document.querySelectorAll('[name="method"]:checked'),
+    ].map((el) => el.value);
+    if (!checked.length) {
+      event.target.checked = true;
+      return;
+    }
+    if (sounding) pause();
+    selected = checked;
+    if (!selected.includes(focus)) focus = selected[0];
+    buildCards();
+    render();
+    history.replaceState(null, "", location.pathname + location.hash);
+  });
+  // Run length only decides where playback stops, so it can change mid-run.
+  // Shortening below the recorded updates would discard history; that needs
+  // a restart.
+  $("horizon").onchange = () => {
+    const next = Number($("horizon").value);
+    if (next < sim.step) {
+      $("settings-error").textContent =
+        `This run already has ${sim.step} recorded updates. Choose at least ${sim.step}, or press Restart run to start a shorter one.`;
+      $("settings-error").hidden = false;
+      return;
+    }
+    $("settings-error").hidden = true;
+    horizon = next;
+    render();
+    setStatus(
+      playing
+        ? `Run length set to ${horizon} updates.`
+        : sim.step >= horizon
+          ? `Run length set to ${horizon} updates. The run is complete; drag the timeline to replay.`
+          : shown < sim.step
+            ? `Run length set to ${horizon} updates. Play replays from update ${shown}, then continues the run from update ${sim.step}.`
+            : `Run length set to ${horizon} updates.${sim.step ? ` Play continues from update ${sim.step}.` : ""}`,
+    );
+    history.replaceState(null, "", location.pathname + location.hash);
+  };
   $("close-advanced").onclick = () => {
     writeForm();
     $("advanced").open = false;
@@ -687,7 +750,9 @@
         observation = "This group has zero weights. No policy update.";
       card.querySelector(".card-observation").textContent = observation;
     }
-    $("step-count").textContent = `Update ${shown}`;
+    $("step-count").textContent = pending
+      ? `Update ${shown} → ${sim.step}`
+      : `Update ${shown}`;
     $("replay").max = horizon;
     $("replay").value = shown;
     $("replay").disabled = sim.step === 0 || pending;
@@ -884,12 +949,15 @@
     return audible ? playDistribution(false, true) : 0;
   }
   function pause() {
+    const interrupted = playing && !pending && shown < horizon;
     clearTimeout(timer);
     scheduled = null;
     playing = false;
     silence();
     if (pending) finishUpdate(false);
     if (sim) render();
+    if (interrupted)
+      setStatus(`Paused at update ${shown}. Play resumes from here.`);
   }
   function advance() {
     if (!playing) return;
@@ -897,7 +965,11 @@
       shown++;
       phase = "update";
       render();
-      setStatus(`Replaying recorded update ${shown}.`);
+      setStatus(
+        shown === horizon
+          ? `Replayed update ${shown}. Run complete; drag the timeline to replay.`
+          : `Replaying recorded update ${shown}.`,
+      );
       const listenTime = playDistribution(false, true);
       if (shown === horizon) {
         schedule(pause, listenTime);
@@ -962,8 +1034,13 @@
     shown = Math.max(0, Math.min(requested, sim.step));
     phase = "";
     render();
+    const complete = sim.step >= horizon;
     setStatus(
-      `Recorded update ${shown} of ${sim.step}. Play replays these states, then continues the run.`,
+      shown < sim.step
+        ? `Recorded update ${shown} of ${sim.step}. Play replays these states${complete ? "; the run is complete." : ", then continues the run."}`
+        : complete
+          ? `Update ${shown}. Run complete; drag the timeline to replay.`
+          : `Update ${shown} of ${sim.step} recorded. Play continues the run.`,
     );
     if (audible) playDistribution(false, true);
   }
@@ -1215,6 +1292,8 @@
             },
             methods: data.comparison,
             focus: guide,
+            pace,
+            horizon,
           });
           location.hash = "visualizer";
           $("play").focus();

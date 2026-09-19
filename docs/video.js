@@ -77,7 +77,7 @@ const RhoVideo = (() => {
       const y = curveY(t * plot.max);
       c.strokeStyle = palette.grid; c.beginPath(); c.moveTo(110,y); c.lineTo(1820,y); c.stroke();
       text((t * plot.max).toFixed(2),64,y+6,18,palette.muted);
-      text(String(t*horizon),curveX(t*horizon),1205,18,palette.muted);
+      text(String(Math.round(t*horizon)),curveX(Math.round(t*horizon)),1205,18,palette.muted);
     }
     for (const s of plot.series) {
       c.strokeStyle = palette[s.id]; c.lineWidth = 3; c.beginPath();

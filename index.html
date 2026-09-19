@@ -18,11 +18,11 @@
     />
     <meta
       property="og:url"
-      content="https://ayushnangia.github.io/reward-lab/"
+      content="https://stablegradients.github.io/reward-lab/"
     />
     <meta
       property="og:image"
-      content="https://ayushnangia.github.io/reward-lab/assets/rho-visualizer.png"
+      content="https://stablegradients.github.io/reward-lab/assets/rho-visualizer.png"
     />
     <meta
       property="og:image:alt"
@@ -151,10 +151,14 @@
               <div class="advanced-heading">
                 <h2>Experiment settings</h2>
                 <div class="advanced-actions">
-                  <button type="submit" class="primary">Apply &amp; reset</button>
-                  <button type="button" id="close-advanced">Cancel</button>
+                  <button type="submit" class="primary">Restart run</button>
+                  <button type="button" id="close-advanced">Close</button>
                 </div>
               </div>
+              <p class="hint settings-note">
+                Changes apply at once. Algorithms and updates per run keep the
+                current run; other settings restart it.
+              </p>
               <fieldset class="methods-field">
                 <legend>Compare algorithms</legend>
                 <div id="method-options"></div>
@@ -192,6 +196,7 @@
                     <option>25</option>
                     <option selected>100</option>
                     <option>300</option>
+                    <option>1000</option>
                   </select></label
                 >
                 <label

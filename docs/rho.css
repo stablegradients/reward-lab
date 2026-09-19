@@ -324,6 +324,9 @@ h1 {
   font: 24px var(--serif);
 }
 .advanced-actions { display: flex; gap: 8px; }
+.settings-note {
+  margin: 4px 0 20px;
+}
 .methods-field {
   border: 0;
   padding: 0;

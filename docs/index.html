@@ -18,11 +18,11 @@
     />
     <meta
       property="og:url"
-      content="https://ayushnangia.github.io/reward-lab/"
+      content="https://stablegradients.github.io/reward-lab/"
     />
     <meta
       property="og:image"
-      content="https://ayushnangia.github.io/reward-lab/assets/rho-visualizer.png"
+      content="https://stablegradients.github.io/reward-lab/assets/rho-visualizer.png"
     />
     <meta
       property="og:image:alt"
@@ -31,7 +31,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="assets/favicon.svg?v=rho" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/katex/katex.min.css?v=50d9c78e03" />
-    <link rel="stylesheet" href="rho.css?v=3a7cbad094" />
+    <link rel="stylesheet" href="rho.css?v=701349733d" />
     <script src="assets/katex/katex.min.js?v=10a91b479c" defer></script>
     <script src="assets/katex/contrib/auto-render.min.js?v=e5372d199b" defer></script>
     <script src="core.js?v=5cbc95c785" defer></script>
@@ -39,9 +39,9 @@
     <script src="content.js?v=1c75a0351b" defer></script>
     <script src="algorithms.js?v=6b9861b472" defer></script>
     <script src="audio.js?v=0a9255cffa" defer></script>
-    <script src="curves.js?v=a4544f59ce" defer></script>
-    <script src="video.js?v=a7947bbd84" defer></script>
-    <script src="visualizer.js?v=d4eb773a9e" defer></script>
+    <script src="curves.js?v=05d76bb0af" defer></script>
+    <script src="video.js?v=3f51642b7a" defer></script>
+    <script src="visualizer.js?v=0ea75303e2" defer></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -151,10 +151,14 @@
               <div class="advanced-heading">
                 <h2>Experiment settings</h2>
                 <div class="advanced-actions">
-                  <button type="submit" class="primary">Apply &amp; reset</button>
-                  <button type="button" id="close-advanced">Cancel</button>
+                  <button type="submit" class="primary">Restart run</button>
+                  <button type="button" id="close-advanced">Close</button>
                 </div>
               </div>
+              <p class="hint settings-note">
+                Changes apply at once. Algorithms and updates per run keep the
+                current run; other settings restart it.
+              </p>
               <fieldset class="methods-field">
                 <legend>Compare algorithms</legend>
                 <div id="method-options"></div>
@@ -192,6 +196,7 @@
                     <option>25</option>
                     <option selected>100</option>
                     <option>300</option>
+                    <option>1000</option>
                   </select></label
                 >
                 <label
