@@ -173,6 +173,7 @@
                     <option>64</option>
                   </select></label
                 >
+                <label>Optimizer<select id="optimizer"></select></label>
                 <label
                   >Learning rate<input
                     id="lr"
@@ -180,7 +181,7 @@
                     min="0.001"
                     max="2"
                     step="0.01"
-                    value="0.5"
+                    value="0.05"
                 /></label>
                 <label
                   >Seed<input
@@ -611,6 +612,14 @@
           the number of samples. All samples contribute to each logit update.
           Consequently, a positive weight on B does not guarantee B becomes more
           likely: C’s contribution can outweigh it.
+        </p>
+        <p>
+          That is the plain SGD step. The visualizer’s default optimizer is
+          Adam, which moves each logit by about
+          \(\eta\,\hat m_j/(\sqrt{\hat v_j}+\epsilon)\) using running
+          averages of that logit’s gradient: the direction is the same, but
+          multiplying every weight by a constant no longer changes the step.
+          Choose SGD under Advanced to see the plain step.
         </p>
         <p>
           PPO adds repeated clipped updates; TRPO chooses a step using a KL

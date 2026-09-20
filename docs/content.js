@@ -29,6 +29,10 @@ const LabContent = {
     noise: "Gaussian noise · σ = 0.12, scores clipped",
     falsepositive: "False high scores · 2% of poor outputs",
   },
+  optimizers: {
+    adam: "Adam · β 0.9 / 0.999",
+    sgd: "SGD · plain gradient step",
+  },
   metrics: {
     mean: "Mean true reward",
     high: "Excellent probability · ≥ 0.9",

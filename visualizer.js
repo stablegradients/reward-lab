@@ -54,7 +54,8 @@
   const defaults = () => ({
     ...LabConfig.defaults(),
     preset: "bell",
-    lr: 0.5,
+    optimizer: "adam",
+    lr: 0.05,
     evalK: 4,
   });
   let cfg = defaults(),
@@ -95,6 +96,7 @@
   };
   options($("preset"), RewardLab.presets);
   options($("transform"), LabContent.transforms);
+  options($("optimizer"), LabContent.optimizers);
   options($("judge"), LabContent.judges);
   options(
     $("algorithm-select"),
@@ -119,7 +121,15 @@
     const given = data.cfg ?? {};
     if (typeof given !== "object" || Array.isArray(given))
       throw Error("A setup must be a JSON object.");
-    const config = LabConfig.validate({ ...defaults(), ...given });
+    // Links made before the optimizer option always carry lr and no
+    // optimizer; they were plain-SGD runs and should replay as such.
+    const legacy =
+      Object.hasOwn(given, "lr") && !Object.hasOwn(given, "optimizer");
+    const config = LabConfig.validate({
+      ...defaults(),
+      ...(legacy ? { optimizer: "sgd" } : {}),
+      ...given,
+    });
     if (
       config.model !== "independent" ||
       config.layout !== "quality" ||
@@ -183,7 +193,7 @@
   ];
   function writeForm() {
     $("preset").value = cfg.preset;
-    for (const key of [...numericFields, "transform", "judge"]) {
+    for (const key of [...numericFields, "transform", "judge", "optimizer"]) {
       const el = $(key);
       if (
         el.tagName === "SELECT" &&
@@ -307,7 +317,8 @@
       if (!$(key).value.trim()) throw Error(`${key} needs a value.`);
       input[key] = Number($(key).value);
     }
-    for (const key of ["transform", "judge"]) input[key] = $(key).value;
+    for (const key of ["transform", "judge", "optimizer"])
+      input[key] = $(key).value;
     input.preset = $("preset").value;
     input.evalK = input.k;
     return input;
@@ -747,7 +758,10 @@
       if (pending && phase === "weight")
         observation = `Sample weights: ${signed(Math.min(...batch.adv))} to ${signed(Math.max(...batch.adv))}`;
       else if (batch && batch.adv.every((a) => Math.abs(a) < 1e-12))
-        observation = "This group has zero weights. No policy update.";
+        observation =
+          cfg.optimizer === "adam"
+            ? "This group has zero weights: no gradient. Adam’s remaining momentum can still move the policy."
+            : "This group has zero weights. No policy update.";
       card.querySelector(".card-observation").textContent = observation;
     }
     $("step-count").textContent = pending
@@ -1136,7 +1150,7 @@
       $("lesson-settings").textContent =
         guide === "trpo"
           ? "Independent logits · KL budget 0.01. The shared learning rate is not used."
-          : `Independent logits · learning rate 0.5${["ppo", "grpo"].includes(guide) ? " · 4 epochs · clip width 0.2" : " · one gradient step"}${["a2c", "ppo"].includes(guide) ? " · starting critic 0.4" : ""}${guide === "pkpo" ? " · k = 2" : ""}.`;
+          : `Independent logits · plain SGD step, learning rate 0.5${["ppo", "grpo"].includes(guide) ? " · 4 epochs · clip width 0.2" : ""}${["a2c", "ppo"].includes(guide) ? " · starting critic 0.4" : ""}${guide === "pkpo" ? " · k = 2" : ""}.`;
       $("lesson-stage").textContent =
         `${stage + 1} / 3 · ${["Score the answers", "Compute the weights", "Update the probabilities"][stage]}`;
       $("lesson-score-heading").textContent =
@@ -1370,7 +1384,7 @@
         height = rows * 330 + 160;
       const style = getComputedStyle(document.documentElement);
       const palette = (name) => style.getPropertyValue(name).trim();
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${palette("--paper")}"/><style>text{font-family:Arial;fill:${palette("--ink")};font-size:12px}.bar{transition:none}</style><text x="30" y="44" style="font:30px Georgia">ρ · Policy updates</text><text x="30" y="70">${esc(RewardLab.presets[cfg.preset])} · ${esc(LabContent.transforms[cfg.transform])} · ${esc(LabContent.judges[cfg.judge])}</text><text x="30" y="92">Update ${shown} · ${cfg.n} samples / update · seed ${cfg.seed} · initial (gray) and current (color)</text>${selected
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${palette("--paper")}"/><style>text{font-family:Arial;fill:${palette("--ink")};font-size:12px}.bar{transition:none}</style><text x="30" y="44" style="font:30px Georgia">ρ · Policy updates</text><text x="30" y="70">${esc(RewardLab.presets[cfg.preset])} · ${esc(LabContent.transforms[cfg.transform])} · ${esc(LabContent.judges[cfg.judge])}</text><text x="30" y="92">Update ${shown} · ${cfg.n} samples / update · ${cfg.optimizer === "adam" ? "Adam" : "SGD"} lr ${cfg.lr} · seed ${cfg.seed} · initial (gray) and current (color)</text>${selected
         .map((id, j) => {
           const p = sim.history[shown].methods[id],
             color = style.getPropertyValue(`--${id}`).trim();

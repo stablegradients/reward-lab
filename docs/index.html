@@ -34,14 +34,14 @@
     <link rel="stylesheet" href="rho.css?v=701349733d" />
     <script src="assets/katex/katex.min.js?v=10a91b479c" defer></script>
     <script src="assets/katex/contrib/auto-render.min.js?v=e5372d199b" defer></script>
-    <script src="core.js?v=5cbc95c785" defer></script>
-    <script src="config.js?v=8d03733c3e" defer></script>
-    <script src="content.js?v=1c75a0351b" defer></script>
-    <script src="algorithms.js?v=6b9861b472" defer></script>
+    <script src="core.js?v=69915f8d65" defer></script>
+    <script src="config.js?v=6e2afb7a44" defer></script>
+    <script src="content.js?v=0d7fecb3a9" defer></script>
+    <script src="algorithms.js?v=bceea3d73a" defer></script>
     <script src="audio.js?v=0a9255cffa" defer></script>
     <script src="curves.js?v=05d76bb0af" defer></script>
-    <script src="video.js?v=3f51642b7a" defer></script>
-    <script src="visualizer.js?v=0ea75303e2" defer></script>
+    <script src="video.js?v=023a41a7d1" defer></script>
+    <script src="visualizer.js?v=995ad433c8" defer></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -173,6 +173,7 @@
                     <option>64</option>
                   </select></label
                 >
+                <label>Optimizer<select id="optimizer"></select></label>
                 <label
                   >Learning rate<input
                     id="lr"
@@ -180,7 +181,7 @@
                     min="0.001"
                     max="2"
                     step="0.01"
-                    value="0.5"
+                    value="0.05"
                 /></label>
                 <label
                   >Seed<input
@@ -611,6 +612,14 @@
           the number of samples. All samples contribute to each logit update.
           Consequently, a positive weight on B does not guarantee B becomes more
           likely: C’s contribution can outweigh it.
+        </p>
+        <p>
+          That is the plain SGD step. The visualizer’s default optimizer is
+          Adam, which moves each logit by about
+          \(\eta\,\hat m_j/(\sqrt{\hat v_j}+\epsilon)\) using running
+          averages of that logit’s gradient: the direction is the same, but
+          multiplying every weight by a constant no longer changes the step.
+          Choose SGD under Advanced to see the plain step.
         </p>
         <p>
           PPO adds repeated clipped updates; TRPO chooses a step using a KL

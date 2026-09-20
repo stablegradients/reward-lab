@@ -33,7 +33,7 @@ const RhoVideo = (() => {
     text(RewardLab.presets[run.cfg.preset], 64, 146, 30);
     const map = run.cfg.transform === "identity" ? "Original reward (no change)" : LabContent.transforms[run.cfg.transform];
     text(map, 64, 191, 30);
-    text(`${LabContent.judges[run.cfg.judge]} · ${run.cfg.n} samples/update · seed ${run.cfg.seed} · learning rate ${run.cfg.lr}`, 64, 235, 26, palette.muted);
+    text(`${LabContent.judges[run.cfg.judge]} · ${run.cfg.n} samples/update · seed ${run.cfg.seed} · ${run.cfg.optimizer === "adam" ? "Adam" : "SGD"} lr ${run.cfg.lr}`, 64, 235, 26, palette.muted);
     text(`Update ${f.shown} / ${setup.horizon}`, 1510, 92, 32);
     text("Gray: start · Color: current", 1390, 145, 26, palette.muted);
     text(`${1200 / setup.pace}× playback · ${f.stage}`, 1390, 191, 26, palette.muted);

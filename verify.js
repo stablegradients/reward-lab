@@ -185,6 +185,36 @@ for (const preset of Object.keys(C.presets).filter((x) => x !== "custom"))
       }
       cases++;
     }
+// Adam cancels a common gradient scale, so two-level rewards (0.2 and 1 here)
+// give TailRL and MaxRL the same trajectory; plain SGD keeps the 0.8 factor.
+{
+  const twoLevel = (optimizer, lr) => {
+    const s = C.create({
+      preset: "rare",
+      transform: "identity",
+      optimizer,
+      lr,
+      n: 16,
+      seed: 3,
+      floor: 0,
+    });
+    for (let t = 0; t < 200; t++) C.step(s);
+    return Object.fromEntries(
+      ["tailrl", "maxrl"].map((m) => [m, s.history[200].methods[m].p]),
+    );
+  };
+  const adam = twoLevel("adam", 0.05),
+    sgd = twoLevel("sgd", 0.5);
+  vector(adam.tailrl, adam.maxrl, 1e-6);
+  assert.ok(adam.tailrl[20] > 0.5, "Adam run should learn the rare outcome");
+  assert.ok(
+    Math.max(...sgd.tailrl.map((x, i) => Math.abs(x - sgd.maxrl[i]))) > 1e-3,
+    "SGD keeps the reward-scale difference between TailRL and MaxRL",
+  );
+  const m = { type: "independent", base: Array(21).fill(0), theta: Array(21).fill(0) };
+  for (let t = 0; t < 3; t++) C.update(m, Array(21).fill(250), 0.1, false, "adam");
+  near(m.theta[0], 0.3, 1e-9); // bias-corrected Adam: one lr per step at constant gradient
+}
 console.log(
-  `PASS: exact finite-batch gradients, neural/shared derivatives, invariances, ties, and ${cases} simulation combinations.`,
+  `PASS: exact finite-batch gradients, neural/shared derivatives, invariances, ties, ${cases} simulation combinations, and Adam scale invariance.`,
 );

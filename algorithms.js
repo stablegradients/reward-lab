@@ -102,7 +102,7 @@ const RhoAlgorithms = {
         text: "Inspect the clipped-gradient fraction and KL after each update. A flat surrogate term does not constrain every probability ratio to the clipping interval.",
         settings: {
           preset: "bell",
-          lr: 1,
+          lr: 0.2,
           ppoEpochs: 8,
         },
       },
@@ -271,7 +271,7 @@ const RhoAlgorithms = {
     transfer:
       "A correctness checker can supply binary labels for model completions. Difficulty-dependent weights can redistribute learning across prompts, but an unseen success still supplies no sampled success signal. A false positive is particularly consequential when genuine successes are rare.",
     citation:
-      "Tajwar et al. · §4.3, Algorithm 1 (centered; no-success groups skipped)",
+      "Tajwar et al. · §4.3, Algorithm 1 (centered; no-success groups give zero weights)",
     cases: [
       {
         title: "No successful sample",
@@ -403,7 +403,7 @@ const RhoAlgorithms = {
     cases: [
       {
         title: "A reward offset",
-        text: "Run several seeds with Identity and Positive affine. Compare fluctuations and mean reward. The affine option also doubles score gaps, so separate that scale effect from the added constant.",
+        text: "Run several seeds with Identity and Positive affine. Compare fluctuations and mean reward. The affine option also doubles score gaps; under the default Adam optimizer that scale cancels, so any difference comes from the added constant. Switch to SGD under Advanced to see the scale effect as well.",
         settings: {
           preset: "narrow",
           transform: "affine",

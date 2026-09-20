@@ -20,6 +20,7 @@ const LabConfig = (() => {
       "reciprocal",
     ],
     judge: ["clean", "noise", "falsepositive"],
+    optimizer: ["sgd", "adam"],
   };
   const numbers = {
     n: [2, 64, true],

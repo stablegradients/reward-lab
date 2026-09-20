@@ -341,7 +341,10 @@ const RewardLab = (() => {
     });
     return softmax(logits);
   }
-  function update(model, grad, lr, unit = false) {
+  // Adam: per-parameter moment estimates, so a common scale on every
+  // gradient (a reward rescaling, say) cancels in the step. Standard constants.
+  const adam = { beta1: 0.9, beta2: 0.999, epsilon: 1e-8 };
+  function update(model, grad, lr, unit = false, optimizer = "sgd") {
     let vector, apply;
     if (model.type === "shared") {
       vector = Array.from({ length: 4 }, (_, j) =>
@@ -376,6 +379,23 @@ const RewardLab = (() => {
     }
     const norm = Math.sqrt(vector.reduce((s, x) => s + x * x, 0));
     if (unit && norm > 1e-12) vector = vector.map((x) => x / norm);
+    // A zero gradient still takes an Adam step: the decaying momentum keeps
+    // moving the policy for a few updates, as it would in a real optimizer.
+    if (optimizer === "adam") {
+      const state = (model.adam ??= {
+        m: vector.map(() => 0),
+        v: vector.map(() => 0),
+        t: 0,
+      });
+      state.t++;
+      const c1 = 1 - adam.beta1 ** state.t,
+        c2 = 1 - adam.beta2 ** state.t;
+      vector = vector.map((g, j) => {
+        state.m[j] = adam.beta1 * state.m[j] + (1 - adam.beta1) * g;
+        state.v[j] = adam.beta2 * state.v[j] + (1 - adam.beta2) * g * g;
+        return state.m[j] / c1 / (Math.sqrt(state.v[j] / c2) + adam.epsilon);
+      });
+    }
     apply(vector);
     return norm;
   }
@@ -436,7 +456,7 @@ const RewardLab = (() => {
       clipped = 0;
     for (let epoch = 0; epoch < cfg.ppoEpochs; epoch++) {
       const result = ppoGradient(forward(model), old, ids, adv, cfg.ppoClip);
-      norm = update(model, result.grad, cfg.lr, cfg.unit);
+      norm = update(model, result.grad, cfg.lr, cfg.unit, cfg.optimizer);
       clipped = Math.max(clipped, result.clipped);
     }
     return {
@@ -540,6 +560,7 @@ const RewardLab = (() => {
       k: 4,
       evalK: 16,
       lr: 0.15,
+      optimizer: "sgd",
       seed: 42,
       judge: "clean",
       lambda: 0.5,
@@ -649,7 +670,9 @@ const RewardLab = (() => {
           ? ppoUpdate(model, p, ids, adv, cfg)
           : method === "trpo"
             ? trpoUpdate(model, p, ids, adv, cfg)
-            : { norm: update(model, grad, cfg.lr, cfg.unit) };
+            : {
+                norm: update(model, grad, cfg.lr, cfg.unit, cfg.optimizer),
+              };
       if (method === "a2c" || method === "ppo")
         model.critic =
           baseline + cfg.criticRate * (mean(transformed) - baseline);
