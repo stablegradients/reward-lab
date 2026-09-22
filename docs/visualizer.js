@@ -48,6 +48,7 @@
     evalK: 4,
     batch: 256,
     dataset: 262144,
+    contexts: 262144,
   });
   let cfg = defaults(),
     selected = defaultMethods.slice(),
@@ -127,6 +128,8 @@
       );
     if (config.k > config.n)
       throw Error("Best-of-k must be at most the samples per update.");
+    if (config.contexts > config.dataset)
+      throw Error("Answer sets cannot exceed the dataset size.");
     const methods = data.methods || defaultMethods;
     if (
       !Array.isArray(methods) ||
@@ -188,6 +191,9 @@
       el.value = cfg[key];
     }
     $("horizon").value = horizon;
+    if (![...$("contexts").options].some((o) => o.value === String(cfg.contexts)))
+      $("contexts").add(new Option(cfg.contexts.toLocaleString("en-US"), String(cfg.contexts)));
+    $("contexts").value = cfg.contexts;
     document.querySelectorAll('[name="method"]').forEach((el) => {
       el.checked = selected.includes(el.value);
     });
@@ -326,6 +332,13 @@
   $("preset").onchange = () =>
     apply({
       cfg: { ...cfg, preset: $("preset").value },
+      methods: selected,
+      horizon,
+      focus,
+    });
+  $("contexts").onchange = () =>
+    apply({
+      cfg: { ...cfg, contexts: Number($("contexts").value) },
       methods: selected,
       horizon,
       focus,
@@ -523,6 +536,10 @@
     $("task-batch").textContent = cfg.batch.toLocaleString("en-US");
     $("task-n").textContent = cfg.n.toLocaleString("en-US");
     $("task-epoch").textContent = Math.ceil(cfg.dataset / cfg.batch).toLocaleString("en-US");
+    $("task-contexts").textContent = cfg.contexts.toLocaleString("en-US");
+    const visits = cfg.dataset / cfg.contexts;
+    $("task-visits").textContent = visits >= 10 ? Math.round(visits).toLocaleString("en-US") : visits.toLocaleString("en-US", { maximumFractionDigits: 1 });
+    $("task-visits-unit").textContent = visits === 1 ? "time" : "times";
     buildCards();
     render();
     setStatus("");

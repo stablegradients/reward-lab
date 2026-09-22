@@ -541,16 +541,22 @@ const RewardLab = (() => {
     const pairs = p
       .map((p, i) => ({ p, r: rewards[i] }))
       .sort((a, b) => a.r - b.r);
-    return ks.map((k) => {
-      let cum = 0,
-        best = 0;
-      for (const a of pairs) {
-        const old = cum;
-        cum += a.p;
-        best += a.r * (Math.pow(Math.min(1, cum), k) - Math.pow(old, k));
+    const kmax = Math.max(...ks),
+      best = Array(kmax + 1).fill(0);
+    let cum = 0;
+    for (const a of pairs) {
+      const old = cum;
+      cum = Math.min(1, cum + a.p);
+      // Running powers replace Math.pow for every k up to kmax.
+      let hi = 1,
+        lo = 1;
+      for (let k = 1; k <= kmax; k++) {
+        hi *= cum;
+        lo *= old;
+        best[k] += a.r * (hi - lo);
       }
-      return best;
-    });
+    }
+    return ks.map((k) => best[k]);
   }
   function metrics(p, rewards, k = 16) {
     const pairs = p
@@ -584,6 +590,7 @@ const RewardLab = (() => {
       n: 32,
       batch: 1,
       dataset: 262144,
+      contexts: 1,
       k: 4,
       evalK: 16,
       lr: 0.15,
@@ -626,6 +633,18 @@ const RewardLab = (() => {
         );
       }
     }
+    // Prompts are grouped into cfg.contexts answer sets. Prompts in one set
+    // share which answers score well and therefore one policy; sets share
+    // nothing. Each set's policy lives over reward levels, so the aggregate
+    // over sets is what the charts show. Sets are exchangeable, so at most
+    // REPRESENTATIVES of them are simulated and stand in for the rest.
+    const representatives = Math.min(cfg.contexts, REPRESENTATIVES),
+      pools = Object.fromEntries(
+        (cfg.methods ?? methods).map((m) => [
+          m,
+          makePool(models[m], representatives, rewards, cfg.evalK),
+        ]),
+      );
     const states = {
       cfg,
       rewards,
@@ -633,6 +652,8 @@ const RewardLab = (() => {
       frozen,
       random,
       models,
+      representatives,
+      pools,
       step: 0,
       history: [],
       last: {},
@@ -640,93 +661,203 @@ const RewardLab = (() => {
     record(states);
     return states;
   }
+  const REPRESENTATIVES = 4096,
+    bestKs = Array.from({ length: 64 }, (_, i) => i + 1);
+  const cloneModel = (m) => ({
+    ...m,
+    base: m.base.slice(),
+    theta: m.theta.slice(),
+    w: m.w.slice(),
+    b: m.b.slice(),
+    v: m.v.slice(),
+  });
+  // One policy per answer set plus running sums of the per-set quantities the
+  // charts need, so an update touches only the sets in its batch.
+  function makePool(model, count, rewards, evalK) {
+    const p = forward(model),
+      summary = summarize(p, rewards, evalK);
+    return {
+      models: Array.from({ length: count }, (_, i) =>
+        i === 0 ? model : cloneModel(model),
+      ),
+      p: Array.from({ length: count }, () => p),
+      summaries: Array.from({ length: count }, () => summary),
+      count,
+      sum: {
+        p: p.map((x) => x * count),
+        bestK: summary.bestK.map((x) => x * count),
+        mean: summary.mean * count,
+        best: summary.best * count,
+        entropy: summary.entropy * count,
+      },
+    };
+  }
+  function summarize(p, rewards, evalK) {
+    const m = metrics(p, rewards, evalK);
+    return {
+      mean: m.mean,
+      best: m.best,
+      entropy: m.entropy,
+      bestK: bestCurve(p, rewards, bestKs),
+    };
+  }
+  function refresh(pool, t, rewards, evalK) {
+    const before = pool.summaries[t],
+      p = forward(pool.models[t]),
+      after = summarize(p, rewards, evalK);
+    pool.sum.p = pool.sum.p.map((x, i) => x - pool.p[t][i] + p[i]);
+    pool.sum.bestK = pool.sum.bestK.map(
+      (x, i) => x - before.bestK[i] + after.bestK[i],
+    );
+    for (const key of ["mean", "best", "entropy"])
+      pool.sum[key] += after[key] - before[key];
+    pool.p[t] = p;
+    pool.summaries[t] = after;
+  }
   function record(s) {
     s.history.push({
       step: s.step,
       methods: Object.fromEntries(
         methods.map((m) => {
-          const p = forward(s.models[m]);
-          return [m, { p, metrics: metrics(p, s.rewards, s.cfg.evalK) }];
+          const pool = s.pools[m];
+          if (!pool) {
+            const p = forward(s.models[m]);
+            return [
+              m,
+              {
+                p,
+                metrics: metrics(p, s.rewards, s.cfg.evalK),
+                bestK: bestCurve(p, s.rewards, bestKs),
+              },
+            ];
+          }
+          const c = pool.count,
+            p = pool.sum.p.map((x) => x / c),
+            linear = metrics(p, s.rewards, s.cfg.evalK);
+          // Mean reward is linear in the policy; best-of-k and entropy are
+          // per-prompt quantities, so they average over answer sets.
+          return [
+            m,
+            {
+              p,
+              metrics: {
+                ...linear,
+                mean: pool.sum.mean / c,
+                best: pool.sum.best / c,
+                entropy: pool.sum.entropy / c,
+              },
+              bestK: pool.sum.bestK.map((x) => x / c),
+            },
+          ];
         }),
       ),
     });
   }
-  // One update draws cfg.batch prompts from a dataset of identical prompts
-  // and n answers per prompt. Advantages are computed within each prompt's
-  // group; the gradient averages over every sampled answer, which is the
-  // batch mean of the per-prompt gradients. The policy is shared across
-  // prompts, so the dataset size only sets the epoch length.
+  // One update draws cfg.batch prompts and n answers per prompt. Each prompt
+  // belongs to one answer set; its group is scored, weighted within the group,
+  // and the gradient for each answer set's policy averages over the prompts
+  // of that set in the batch. Prompts of sets beyond the simulated
+  // representatives are skipped: they are statistically identical to the
+  // ones kept.
   function step(s) {
     const { cfg } = s,
       n = cfg.n,
-      total = n * cfg.batch;
+      total = n * cfg.batch,
+      sets = cfg.contexts,
+      kept = s.representatives;
+    // Drawn before the samples only when there is more than one answer set,
+    // so single-set runs reproduce the earlier random sequence exactly.
+    const owner = Array.from({ length: cfg.batch }, () => {
+      if (sets === 1) return 0;
+      const t = Math.floor(s.random() * sets);
+      return t < kept ? t : -1;
+    });
     const uniforms = Array.from({ length: total }, () => s.random()),
       noise = Array.from({ length: total }, () => [s.random(), s.random()]);
+    const byOwner = new Map();
+    owner.forEach((t, i) => {
+      if (t >= 0) byOwner.set(t, [...(byOwner.get(t) ?? []), i]);
+    });
     for (const method of cfg.methods ?? methods) {
-      const model = s.models[method],
-        p = forward(model),
-        ids = uniforms.map((u) => {
-          let sum = 0;
-          for (let j = 0; j < p.length; j++) {
-            sum += p[j];
-            if (u < sum) return j;
-          }
-          return p.length - 1;
-        });
-      const raw = ids.map((i) => s.rewards[i]);
-      const judged = raw.map((r, j) =>
-        cfg.judge === "noise"
-          ? Math.max(
-              0,
-              Math.min(
-                1,
-                r +
-                  0.12 *
-                    Math.sqrt(-2 * Math.log(Math.max(1e-12, noise[j][0]))) *
-                    Math.cos(2 * Math.PI * noise[j][1]),
-              ),
-            )
-          : cfg.judge === "falsepositive" && r < 0.3 && noise[j][0] < 0.02
-            ? 1
-            : r,
-      );
-      const transformed =
-        method === "maxrl"
-          ? judged.map((r) => (r >= 0.9 ? 1 : 0))
-          : transform(judged, cfg.transform, cfg.lambda, s.frozen, cfg);
-      const baseline = model.critic || 0,
-        adv = [];
-      for (let g = 0; g < cfg.batch; g++)
-        adv.push(
-          ...advantage(
-            transformed.slice(g * n, (g + 1) * n),
-            method,
-            cfg.k,
-            baseline,
-          ),
-        );
-      const grad = p.map((x) => -x * mean(adv));
-      ids.forEach((id, i) => (grad[id] += adv[i] / total));
-      const diagnostics =
-        method === "ppo" || method === "grpo"
-          ? ppoUpdate(model, p, ids, adv, cfg)
-          : method === "trpo"
-            ? trpoUpdate(model, p, ids, adv, cfg)
-            : {
-                norm: update(model, grad, cfg.lr, cfg.unit, cfg.optimizer),
-              };
-      if (method === "a2c" || method === "ppo")
-        model.critic =
-          baseline + cfg.criticRate * (mean(transformed) - baseline);
+      const pool = s.pools[method],
+        all = { ids: [], raw: [], judged: [], transformed: [], adv: [] },
+        criticBefore = pool.models[0].critic || 0;
+      let diagnostics = {};
+      for (const [t, prompts] of byOwner) {
+        const model = pool.models[t],
+          p = pool.p[t],
+          ids = [],
+          raw = [],
+          judged = [],
+          transformed = [],
+          adv = [];
+        for (const prompt of prompts) {
+          const groupIds = uniforms
+            .slice(prompt * n, (prompt + 1) * n)
+            .map((u) => {
+              let sum = 0;
+              for (let j = 0; j < p.length; j++) {
+                sum += p[j];
+                if (u < sum) return j;
+              }
+              return p.length - 1;
+            });
+          const groupRaw = groupIds.map((i) => s.rewards[i]);
+          const groupJudged = groupRaw.map((r, g) => {
+            const z = noise[prompt * n + g];
+            return cfg.judge === "noise"
+              ? Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    r +
+                      0.12 *
+                        Math.sqrt(-2 * Math.log(Math.max(1e-12, z[0]))) *
+                        Math.cos(2 * Math.PI * z[1]),
+                  ),
+                )
+              : cfg.judge === "falsepositive" && r < 0.3 && z[0] < 0.02
+                ? 1
+                : r;
+          });
+          const groupTransformed =
+            method === "maxrl"
+              ? groupJudged.map((r) => (r >= 0.9 ? 1 : 0))
+              : transform(groupJudged, cfg.transform, cfg.lambda, s.frozen, cfg);
+          ids.push(...groupIds);
+          raw.push(...groupRaw);
+          judged.push(...groupJudged);
+          transformed.push(...groupTransformed);
+          adv.push(
+            ...advantage(groupTransformed, method, cfg.k, model.critic || 0),
+          );
+        }
+        const baseline = model.critic || 0,
+          grad = p.map((x) => -x * mean(adv));
+        ids.forEach((id, i) => (grad[id] += adv[i] / ids.length));
+        diagnostics =
+          method === "ppo" || method === "grpo"
+            ? ppoUpdate(model, p, ids, adv, cfg)
+            : method === "trpo"
+              ? trpoUpdate(model, p, ids, adv, cfg)
+              : {
+                  norm: update(model, grad, cfg.lr, cfg.unit, cfg.optimizer),
+                };
+        if (method === "a2c" || method === "ppo")
+          model.critic =
+            baseline + cfg.criticRate * (mean(transformed) - baseline);
+        refresh(pool, t, s.rewards, cfg.evalK);
+        all.ids.push(...ids);
+        all.raw.push(...raw);
+        all.judged.push(...judged);
+        all.transformed.push(...transformed);
+        all.adv.push(...adv);
+      }
       s.last[method] = {
-        ids,
-        raw,
-        judged,
-        transformed,
-        adv,
+        ...all,
         ...diagnostics,
         ...(method === "a2c" || method === "ppo"
-          ? { baseline, critic: model.critic }
+          ? { baseline: criticBefore, critic: pool.models[0].critic }
           : {}),
       };
     }
@@ -751,6 +882,7 @@ const RewardLab = (() => {
     combination,
     metrics,
     bestCurve,
+    bestKs,
     create,
     step,
     forward,
