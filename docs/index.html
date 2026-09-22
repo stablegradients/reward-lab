@@ -26,22 +26,20 @@
     />
     <meta
       property="og:image:alt"
-      content="GRPO, PPO and TailRL changing the probabilities of a bell-shaped reward distribution in a finite categorical example."
+      content="RLOO, GRPO, TailRL, MaxRL and PKPO changing the probabilities of a bell-shaped reward distribution in a finite categorical example."
     />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="assets/favicon.svg?v=rho" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/katex/katex.min.css?v=50d9c78e03" />
-    <link rel="stylesheet" href="rho.css?v=701349733d" />
+    <link rel="stylesheet" href="rho.css?v=0c6f21f72e" />
     <script src="assets/katex/katex.min.js?v=10a91b479c" defer></script>
     <script src="assets/katex/contrib/auto-render.min.js?v=e5372d199b" defer></script>
-    <script src="core.js?v=69915f8d65" defer></script>
-    <script src="config.js?v=6e2afb7a44" defer></script>
-    <script src="content.js?v=0d7fecb3a9" defer></script>
-    <script src="algorithms.js?v=bceea3d73a" defer></script>
-    <script src="audio.js?v=0a9255cffa" defer></script>
-    <script src="curves.js?v=05d76bb0af" defer></script>
-    <script src="video.js?v=023a41a7d1" defer></script>
-    <script src="visualizer.js?v=995ad433c8" defer></script>
+    <script src="core.js?v=bb7b1f1628" defer></script>
+    <script src="config.js?v=f0cf4c3d8a" defer></script>
+    <script src="content.js?v=a057e63b4d" defer></script>
+    <script src="algorithms.js?v=534b255504" defer></script>
+    <script src="curves.js?v=540ddae71e" defer></script>
+    <script src="visualizer.js?v=6b18b3ca41" defer></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -73,7 +71,19 @@
         <div class="page-intro">
           <div>
             <h1>Policy updates</h1>
-            <p>Select a starting distribution to compare algorithm updates.</p>
+            <p>
+              The task: a dataset of <span id="task-dataset">262,144</span>
+              prompts, each with 21 possible answers carrying fixed rewards
+              between 0 and 1 and the same starting distribution, so one shared
+              policy serves them all. Every update draws
+              <span id="task-batch">256</span> prompts, samples
+              <span id="task-n">32</span> answers per prompt, weights each
+              prompt’s group with the algorithm’s rule, and averages the
+              gradient across the batch; one pass over the dataset takes
+              <span id="task-epoch">1,024</span> updates. All algorithms start
+              from the same distribution and share the random draws; they
+              differ in how they turn each group’s scores into weights.
+            </p>
           </div>
         </div>
         <div class="controls">
@@ -81,13 +91,6 @@
             <label for="preset">Starting distribution</label>
             <div class="distribution-picker">
               <select id="preset"></select>
-              <button
-                id="edit-distribution"
-                aria-expanded="false"
-                aria-controls="distribution-editor"
-              >
-                Edit shape
-              </button>
             </div>
           </div>
           <div class="transport">
@@ -105,46 +108,6 @@
               Next step</button
             ><button id="reset">Reset</button>
           </div>
-          <div class="speed-control">
-            <div class="speed-heading">
-              <label for="speed">Speed</label>
-              <button
-                id="speed-reset"
-                title="Reset playback speed to 1×"
-                aria-label="Reset playback speed to 1×"
-              >
-                <output id="speed-value">1×</output>
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="M3 6a5 5 0 1 1 .2 4M3 2v4h4" />
-                </svg>
-              </button>
-            </div>
-            <div class="speed-rail">
-              <input
-                id="speed"
-                type="range"
-                min="0"
-                max="5"
-                step="1"
-                value="2"
-                aria-label="Playback speed"
-              />
-              <div class="speed-ticks" aria-hidden="true"></div>
-            </div>
-            <div
-              id="speed-stops"
-              role="group"
-              aria-label="Choose playback speed"
-            ></div>
-          </div>
-          <button
-            id="sound"
-            aria-pressed="false"
-            title="Hear the distribution: taller bars sound higher and louder, from reward 0 to 1"
-            aria-describedby="sound-key"
-          >
-            Sound off
-          </button>
           <details id="advanced">
             <summary>Advanced</summary>
             <form id="settings" novalidate>
@@ -167,13 +130,20 @@
                 <label>Reward map<select id="transform"></select></label>
                 <label>Judge<select id="judge"></select></label>
                 <label
-                  >Samples per update<select id="n">
+                  >Prompts per update<select id="batch">
+                    <option>1</option>
+                    <option>16</option>
+                    <option>64</option>
+                    <option selected>256</option>
+                  </select></label
+                >
+                <label
+                  >Answers per prompt<select id="n">
                     <option>8</option>
                     <option selected>32</option>
                     <option>64</option>
                   </select></label
                 >
-                <label>Optimizer<select id="optimizer"></select></label>
                 <label
                   >Learning rate<input
                     id="lr"
@@ -195,9 +165,9 @@
                 <label
                   >Updates per run<select id="horizon">
                     <option>25</option>
-                    <option selected>100</option>
+                    <option>100</option>
                     <option>300</option>
-                    <option>1000</option>
+                    <option selected>1000</option>
                   </select></label
                 >
                 <label
@@ -260,10 +230,10 @@
                 <p id="map-note" class="hint"></p>
               </div>
               <details class="optimizer-settings">
-                <summary>Optimizer settings</summary>
+                <summary>GRPO and support settings</summary>
                 <div class="settings-grid">
                   <label
-                    ><span>PPO / GRPO clip \(\epsilon\)</span
+                    ><span>GRPO clip \(\epsilon\)</span
                     ><input
                       id="ppoClip"
                       type="number"
@@ -272,29 +242,13 @@
                       step="0.05"
                       value="0.2" /></label
                   ><label
-                    >PPO / GRPO epochs<input
+                    >GRPO epochs<input
                       id="ppoEpochs"
                       type="number"
                       min="1"
                       max="10"
                       step="1"
                       value="4" /></label
-                  ><label
-                    >TRPO KL budget<input
-                      id="trustKL"
-                      type="number"
-                      min="0.001"
-                      max="0.1"
-                      step="0.001"
-                      value="0.01" /></label
-                  ><label
-                    >A2C / PPO critic rate<input
-                      id="criticRate"
-                      type="number"
-                      min="0.01"
-                      max="1"
-                      step="0.01"
-                      value="0.1" /></label
                   ><label
                     >Initial support smoothing<input
                       id="floor"
@@ -315,89 +269,6 @@
             </form>
           </details>
         </div>
-        <section
-          id="distribution-editor"
-          aria-labelledby="distribution-title"
-          hidden
-        >
-          <div class="distribution-heading">
-            <h2 id="distribution-title">Edit starting distribution</h2>
-            <button id="clear-distribution">Clear</button>
-          </div>
-          <div id="shape-presets" aria-label="Starting shapes"></div>
-          <p id="draw-help" class="hint">
-            Drag across the bars to draw a shape. Heights are relative weights;
-            probabilities are normalized to sum to 100%.
-            <span id="draw-floor" hidden
-              >Initial support smoothing in Advanced also applies.</span
-            >
-          </p>
-          <p id="draw-keyboard" class="sr-only">
-            Use left and right arrows to select a reward. Use up and down arrows
-            to change its weight, Shift for larger changes, Home for zero and
-            End for maximum.
-          </p>
-          <div class="distribution-readout">
-            <span>Relative weight</span
-            ><output id="draw-reading" aria-live="polite"></output>
-          </div>
-          <div
-            id="distribution-draw"
-            role="group"
-            aria-label="Draw starting distribution"
-            aria-describedby="draw-help draw-keyboard"
-          ></div>
-          <div class="distribution-axis" aria-hidden="true">
-            <span>0</span><span>0.5</span><span>1</span>
-          </div>
-          <p class="distribution-axis-label">Reward</p>
-          <details id="paste-samples">
-            <summary>Paste samples</summary>
-            <label for="custom">Reward samples</label>
-            <textarea
-              id="custom"
-              rows="2"
-              placeholder="0.2, 0.2, 0.2, 0.6, 1"
-              aria-describedby="sample-help"
-            ></textarea>
-            <div class="sample-actions">
-              <p class="hint" id="sample-help">
-                Values from 0 to 1, binned to the nearest 0.05.
-              </p>
-              <button id="load-samples">Load samples</button>
-            </div>
-          </details>
-          <p id="distribution-error" role="alert" hidden></p>
-          <div class="form-actions">
-            <button id="apply-distribution" class="primary">
-              Use distribution
-            </button>
-            <button id="cancel-distribution">Cancel</button>
-            <span>Starts a new run.</span>
-          </div>
-        </section>
-        <section
-          id="sound-panel"
-          aria-label="Listen to the selected distribution"
-          hidden
-        >
-          <div class="sound-controls">
-            <span id="sound-method">GRPO</span>
-            <button id="listen-current">Listen</button>
-            <button id="listen-compare">Start → Current</button>
-            <label class="volume-control"
-              >Volume<input
-                id="volume"
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value="0.45"
-            /></label>
-          </div>
-          <p id="sound-key" class="hint" hidden></p>
-          <p id="sound-reading" role="status"></p>
-        </section>
         <div class="reading-key">
           <p>
             <b>Height = probability.</b> Each bar is one possible outcome,
@@ -406,91 +277,32 @@
           <span><i></i> Start <i class="current-key"></i> Current</span>
         </div>
         <div id="comparison" class="comparison"></div>
-        <div class="timeline">
-          <span id="step-count">Update 0</span
-          ><input
-            id="replay"
-            aria-label="Replay completed updates"
-            type="range"
-            min="0"
-            max="0"
-            value="0"
-          /><span id="run-end">100</span>
-          <div class="phases" aria-label="Update stage">
-            <span data-phase="sample">Sample</span
-            ><span aria-hidden="true">→</span
-            ><span data-phase="weight">Weight</span
-            ><span aria-hidden="true">→</span
-            ><span data-phase="update">Update</span>
-          </div>
-        </div>
-        <p id="status" class="status" role="status">
-          Press Play or Next step to begin.
-        </p>
+        <p id="status" class="status" role="status"></p>
         <section class="learning-curves" aria-labelledby="curve-title">
-          <div class="curve-heading"><h2 id="curve-title">Learning curves</h2>
-            <label>Metric <select id="curve-metric">
-              <option value="mean">Mean original reward</option><option value="high">P(reward ≥ 0.9)</option>
-              <option value="bad">P(reward &lt; 0.3)</option><option value="middle">P(0.3 ≤ reward &lt; 0.9)</option>
-              <option value="best">Expected best-of-k reward</option><option value="entropy">Entropy (nats)</option>
-            </select></label>
-          </div>
-          <p class="hint">Progress for every selected algorithm, through the displayed update. Reward metrics use original rewards. Replay moves the curves with the charts.</p>
-          <div id="curve-chart"></div><div id="curve-values" class="curve-values"></div>
-        </section>
-        <div class="below-plot">
-          <p>
-            Finite categorical policies with 21 outcomes. These are
-            learning-rule demonstrations, not language-model training or a
-            ranking of algorithms. <a href="#algorithms">What is simplified?</a>
+          <div class="curve-heading"><h2 id="curve-title">Learning curves</h2></div>
+          <p class="hint">
+            Every selected algorithm, through the displayed update, in original
+            rewards. Hover a curve to read values at any update; the best-of-k
+            chart follows the hovered update and otherwise shows the latest one.
           </p>
-          <div>
-            <button id="share">Copy setup link</button
-            ><button id="save-image">Save image</button>
-            <button id="export-video">Export video</button>
+          <div class="chart-grid">
+            <figure>
+              <figcaption>Mean reward</figcaption>
+              <div id="curve-mean" class="curve-chart"></div>
+              <div id="values-mean" class="curve-values"></div>
+            </figure>
+            <figure>
+              <figcaption>Entropy of the policy</figcaption>
+              <div id="curve-entropy" class="curve-chart"></div>
+              <div id="values-entropy" class="curve-values"></div>
+            </figure>
+            <figure>
+              <figcaption id="curve-best-title">Expected best of k draws</figcaption>
+              <div id="curve-best" class="curve-chart"></div>
+              <div id="values-best" class="curve-values"></div>
+            </figure>
           </div>
-        </div>
-        <dialog id="video-dialog" aria-labelledby="video-title" aria-describedby="video-description">
-          <h2 id="video-title">Export video</h2>
-          <p id="video-description"></p>
-          <p id="video-format" class="hint"></p>
-          <canvas id="video-canvas" hidden aria-label="Video export preview"></canvas>
-          <video id="video-preview" controls playsinline hidden aria-label="Exported video preview"></video>
-          <p id="video-status" role="status">Keep this tab visible until export finishes.</p>
-          <div class="video-actions">
-            <button id="video-start">Start recording</button>
-            <a id="video-download" hidden>Download video</a>
-            <button id="video-close">Close</button>
-          </div>
-        </dialog>
-        <details id="inspector" class="inspector">
-          <summary>
-            Inside one update <span id="inspect-name">GRPO</span>
-          </summary>
-          <div class="inspector-content">
-            <p id="batch-summary"></p>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sample</th>
-                    <th>Original reward</th>
-                    <th>Judge score</th>
-                    <th>Training score</th>
-                    <th>Weight \(A_i\)</th>
-                  </tr>
-                </thead>
-                <tbody id="batch-rows"></tbody>
-              </table>
-            </div>
-            <p class="hint">
-              Select an algorithm’s chart to inspect its samples. Sound scans
-              its current probabilities from low to high reward. Taller bars
-              sound higher and louder; zero bars are silent. Speed changes the
-              timing. Pitch and loudness use the same scales across algorithms.
-            </p>
-          </div>
-        </details>
+        </section>
       </section>
       <section id="algorithms" hidden>
         <div class="page-intro">
@@ -614,36 +426,24 @@
           likely: C’s contribution can outweigh it.
         </p>
         <p>
-          That is the plain SGD step. The visualizer’s default optimizer is
-          Adam, which moves each logit by about
-          \(\eta\,\hat m_j/(\sqrt{\hat v_j}+\epsilon)\) using running
-          averages of that logit’s gradient: the direction is the same, but
-          multiplying every weight by a constant no longer changes the step.
-          Choose SGD under Advanced to see the plain step.
-        </p>
-        <p>
-          PPO adds repeated clipped updates; TRPO chooses a step using a KL
-          budget. Their chapters show those operations explicitly.
+          That is the plain SGD step. The visualizer uses Adam, which moves
+          each logit by about \(\eta\,\hat m_j/(\sqrt{\hat v_j}+\epsilon)\)
+          using running averages of that logit’s gradient: the direction is
+          the same, but multiplying every weight by a constant no longer
+          changes the step. GRPO adds repeated clipped updates; its chapter
+          shows that operation explicitly.
         </p>
       </details>
       <h3>Algorithm differences</h3>
       <p>
-        <a href="#algorithms/reinforce">REINFORCE</a> starts with raw rewards.
-        <a href="#algorithms/rloo">RLOO</a> and
-        <a href="#algorithms/a2c">A2C</a> supply different baselines.
-        <a href="#algorithms/ppo">PPO</a> changes how sampled information is
-        reused, and <a href="#algorithms/grpo">GRPO</a> uses group-standardized
-        advantages in that clipped update.
-        <a href="#algorithms/trpo">TRPO</a> checks a policy-distance constraint.
-      </p>
-      <p>
+        <a href="#algorithms/rloo">RLOO</a> subtracts a leave-one-out baseline
+        from each score. <a href="#algorithms/grpo">GRPO</a> standardizes the
+        group and applies the result in a clipped update.
         <a href="#algorithms/maxrl">MaxRL</a>,
         <a href="#algorithms/pkpo">PKPO</a> and
         <a href="#algorithms/tailrl">TailRL</a> change how success, retries or
-        reward thresholds enter the objective.
-        <a href="#algorithms/elite">Elite selection</a> is a simple rank-based
-        comparison. Each chapter has the same three-answer calculation, so the
-        differences are visible.
+        reward tails enter the objective. Each chapter has the same
+        three-answer calculation, so the differences are visible.
       </p>
       <h3>Interpreting reward histograms</h3>
       <p>
@@ -674,8 +474,9 @@
         rollout budgets. The displayed best-of-k metric is the exact expected
         maximum original reward among k independent draws. It assumes an oracle
         selector; an imperfect judge may select a worse candidate. In Advanced,
-        the k control sets both PKPO’s training target and every chart’s
-        evaluation budget. Hold it fixed when comparing runs.
+        the k control sets both PKPO’s training target and the k used by the
+        cards’ expected best-of-k metric; the best-of-k chart always spans k =
+        1 to 64. Hold it fixed when comparing runs.
       </p>
       <p class="guide-note">
         This is one prompt with 21 independently adjustable action logits and
@@ -683,8 +484,8 @@
         penalty. The bell preset is discrete and bounded. Reset reuses the seed;
         changing the seed changes the random draws. Methods share random
         numbers, but can sample different actions once their policies differ.
-        Equal updates do not mean equal compute: PPO and GRPO reuse each group
-        for multiple epochs. The worked examples fix one draw of each of three
+        Equal updates do not mean equal compute: GRPO reuses each group for
+        multiple epochs. The worked examples fix one draw of each of three
         answers; the visualizer samples with replacement.
       </p>
     </template>

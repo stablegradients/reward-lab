@@ -11,39 +11,9 @@ const R = vm.runInContext("RewardLab", ctx),
   V = vm.runInContext("LabConfig", ctx),
   close = (a, b, tol = 1e-9) =>
     assert.ok(Math.abs(a - b) < tol, `${a} != ${b}`);
-const A = require("./audio.js");
-const bell = A.notes(R.initial("bell")),
-  uniform = A.notes(R.initial("uniform"));
-assert(
-  bell[10].frequency > bell[5].frequency &&
-    bell[5].frequency > bell[0].frequency,
-);
-bell.forEach((note, i) => {
-  close(note.frequency, bell[20 - i].frequency);
-  close(note.at, i * 0.1);
-  close(note.pan, (i / 20 - 0.5) * 1.4);
-});
-assert(uniform.every((n) => n.frequency === uniform[0].frequency));
-assert(uniform.every((n) => n.peakGain === uniform[0].peakGain));
-assert(
-  bell[10].peakGain > bell[5].peakGain && bell[5].peakGain > bell[0].peakGain,
-);
-assert.equal(A.notes(R.initial("rare")).length, 2); // A 0.1% tail is a note, not rounded away.
-assert.equal(A.notes(R.initial("rare"))[1].bin, 20);
-assert(A.notes(R.initial("missing")).every((n) => n.bin <= 14));
-assert.equal(A.notes(Array(21).fill(0)).length, 0);
-const bimodal = A.notes(R.initial("bimodal"));
-assert.equal(
-  bimodal.filter(
-    (n, i) =>
-      i > 0 &&
-      i < 20 &&
-      n.frequency > bimodal[i - 1].frequency &&
-      n.frequency > bimodal[i + 1].frequency,
-  ).length,
-  2,
-);
-assert(A.duration < A.slot); // Releases finish before the next bin, including a silent gap.
+for (const bad of [{ batch: 0 }, { batch: 2.5 }, { batch: 1025 }, { dataset: 0 }])
+  assert.throws(() => V.validate(bad));
+assert.equal(V.validate({ batch: 256, dataset: 262144 }).batch, 256);
 for (const tailAt of [0.1, 0.7, 0.9])
   for (const jump of [0, 0.5, 1]) {
     const cfg = V.validate({
@@ -167,7 +137,7 @@ worker.onmessage({
 });
 const sweep = events.find((e) => e.type === "complete");
 assert(sweep);
-assert.equal(sweep.rows.length, 11);
+assert.equal(sweep.rows.length, 12);
 for (const row of sweep.rows)
   for (const m of R.methods)
     for (const q of Object.values(row.methods[m]))
@@ -184,5 +154,5 @@ worker.onmessage({
 });
 assert.equal(events.at(-1).type, "error");
 console.log(
-  "PASS: piecewise continuity/jump/monotonicity; validated settings; matched worker comparisons; 11-distribution worker sweep; invalid inputs.",
+  "PASS: piecewise continuity/jump/monotonicity; validated settings; matched worker comparisons; 12-distribution worker sweep; invalid inputs.",
 );

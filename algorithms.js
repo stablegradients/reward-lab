@@ -1,5 +1,62 @@
 /* LaTeX, lessons and finite experiments. Numerical rules live in core.js. */
 const RhoAlgorithms = {
+  rloo: {
+    name: "REINFORCE Leave-One-Out",
+    short: "Other-sample baseline",
+    lead: "Judge an answer relative to the other attempts at the same problem. Those other scores provide a baseline without training a critic.",
+    equation: "A_i = r_i - \\frac{\\sum_{j\\ne i}r_j}{n-1}",
+    terms: [
+      ["n", "Number of sampled outcomes in this group."],
+      ["A_i", "Reward relative to the other samples."],
+      ["r_i", "The training score of answer i."],
+      [
+        "j",
+        "An index over the other samples; \\(j\\ne i\\) excludes this answer.",
+      ],
+    ],
+    here: "One categorical policy-gradient step per group. A fixed nonlinear reward map changes the target from expected reward to expected mapped reward.",
+    why: [
+      "A reward of 0.5 might be encouraging on a difficult problem and disappointing on an easy one. A baseline supplies that context. An advantage is the reward minus this comparison value.",
+      "RLOO uses the other answers in the group as the comparison. Leaving the current answer out matters: otherwise that answer would help determine the baseline being subtracted from itself.",
+    ],
+    read: [
+      "For answer \\(i\\), sum the other \\(n-1\\) rewards and divide by \\(n-1\\). Subtract that average from \\(r_i\\). A negative weight is allowed; it is not a negative probability.",
+      "For independent samples from the same policy and a fixed reward function, the other-sample baseline preserves the expected policy gradient. The resulting update still uses \\(A_i\\nabla_\\theta\\log\\pi_\\theta(y_i)\\).",
+    ],
+    shaping: [
+      "A shared additive offset cancels exactly. Multiplying scores by a positive constant multiplies the advantages by that constant. A nonlinear map changes the relative gaps and therefore the expected-reward objective.",
+      "Normal scores fitted separately to each group are a different case: an answer’s training score now depends on its companions. The usual fixed-reward unbiasedness argument no longer applies directly. No Gaussian reward assumption is needed.",
+    ],
+    transfer:
+      "In sequence-level RL, the group contains multiple completions of one prompt. An easy prompt’s answers should not serve as the baseline for an unrelated hard prompt. RLOO removes the need for a learned baseline, but the extra completions still cost generation time.",
+    citation: "Ahmadian et al. · §2.3, leave-one-out estimator",
+    cases: [
+      {
+        title: "Too few rare successes",
+        text: "Use a small group and a rare excellent outcome. Many groups contain only poor answers and produce no relative signal. Increase the group size and compare several seeds.",
+        settings: {
+          preset: "rare",
+          n: 8,
+        },
+      },
+      {
+        title: "All scores tied",
+        text: "No answer beats its companions, so every advantage is zero. Normalizing the tied scores cannot invent an ordering.",
+        settings: {
+          preset: "zero",
+        },
+      },
+      {
+        title: "A nonlinear score map",
+        text: "Compare Identity and Square on two modes. Inspect the weights in a sampled group before interpreting the changed bars.",
+        settings: {
+          preset: "bimodal",
+          transform: "square",
+        },
+      },
+    ],
+    comparison: ["rloo", "grpo", "tailrl"],
+  },
   grpo: {
     name: "Group Relative Policy Optimization",
     short: "Group advantages + clipping",
@@ -18,6 +75,8 @@ const RhoAlgorithms = {
     ],
     here: "We apply the group advantages through a PPO-style clipped categorical surrogate. We add \\(10^{-8}\\) to \\(\\sigma\\) for numerical stability; equal-reward groups use zero advantages. The paper’s token averaging and reference-policy KL penalty are omitted (\\(\\beta=0\\)).",
     clipped: true,
+    clippedEquation:
+      "\\begin{aligned} L &= \\frac{1}{n}\\sum_{i=1}^{n}\\ell_i, \\\\[4pt] \\ell_i &= \\min\\!\\left(q_i A_i,\\widetilde{q}_i A_i\\right). \\end{aligned}",
     why: [
       "Subtracting the average distinguishes better from worse attempts. Dividing by the standard deviation expresses the difference in units of the group’s spread. This is an advantage calculation, not a recipe for changing scores into a Gaussian distribution.",
     ],
@@ -57,72 +116,7 @@ const RhoAlgorithms = {
         },
       },
     ],
-    comparison: ["grpo", "ppo", "rloo"],
-  },
-  ppo: {
-    name: "Proximal Policy Optimization",
-    short: "Learned baseline + clipping",
-    lead: "Reuse scored answers for several updates. PPO clips terms in the probability-ratio objective to limit the incentive for further movement in the favored direction.",
-    equation:
-      "\\begin{aligned} L &= \\frac{1}{n}\\sum_{i=1}^{n}\\ell_i, \\\\[4pt] \\ell_i &= \\min\\!\\left(q_i A_i,\\widetilde{q}_i A_i\\right). \\end{aligned}",
-    terms: [
-      [
-        "q_i",
-        "Current probability divided by the probability when this group was sampled.",
-      ],
-      [
-        "\\widetilde{q}_i",
-        "The ratio \\(q_i\\) clipped to \\([1-\\epsilon,1+\\epsilon]\\).",
-      ],
-      ["A_i", "Reward minus the learned value baseline in this example."],
-      ["\\ell_i", "Clipped surrogate term for one sample."],
-      ["\\epsilon", "The clipping width. Default: 0.2."],
-      ["n", "Number of samples in the group."],
-    ],
-    here: "The scalar critic is updated after each group. There are no sequences, temporal GAE or entropy bonus. Clipping is active in the displayed policy updates.",
-    clipped: true,
-    why: [
-      "Generating a group can be expensive. Several optimization passes, called epochs, can reuse it. After the first pass, however, the current policy differs from the one that produced those samples.",
-      "The ratio \\(q_i\\) measures that change for an answer. If its probability moves from 0.20 to 0.28, the ratio is 1.4: it is 40% more likely, not 1.4 probability.",
-    ],
-    read: [
-      "The plain term \\(q_i A_i\\) rewards increasing the ratio for a positive advantage and decreasing it for a negative one. Hold the advantage and rollout probability fixed throughout the epochs.",
-      "PPO takes the smaller of the plain and clipped terms. With \\(\\epsilon=0.2\\), a positive-advantage term stops improving beyond \\(q=1.2\\); a negative-advantage term stops improving below \\(q=0.8\\). Movement in the harmful direction is still penalized.",
-    ],
-    shaping: [
-      "Clipping happens after rewards have become advantages. It clips a probability-ratio term, so it neither caps high rewards nor makes their distribution normal.",
-      "A score map can change which advantages are positive, their sizes, and when clipping becomes active. With a learned critic, shifting score units also changes baseline calibration. Keeping the same clipping width does not make different reward maps equivalent.",
-    ],
-    transfer:
-      "In language-model training, ratios are often computed at token positions, and value estimates, masks, length averaging and reference-policy penalties matter. Here each answer is one action and the critic is one scalar. The clipping geometry transfers; the exact probability changes below do not predict a token model’s changes.",
-    citation: "Schulman et al. (2017) · §3, clipped surrogate, equation 7",
-    cases: [
-      {
-        title: "Many epochs, a large step",
-        text: "Inspect the clipped-gradient fraction and KL after each update. A flat surrogate term does not constrain every probability ratio to the clipping interval.",
-        settings: {
-          preset: "bell",
-          lr: 0.2,
-          ppoEpochs: 8,
-        },
-      },
-      {
-        title: "All tied scores",
-        text: "A learned critic can still be wrong even when all rewards agree. In the all-zero, single-outcome preset here, there is no probability change.",
-        settings: {
-          preset: "zero",
-        },
-      },
-      {
-        title: "False successes",
-        text: "Clipping can limit an incentive while still reinforcing a mislabeled answer. Compare poor-output probability with the training signal.",
-        settings: {
-          preset: "right",
-          judge: "falsepositive",
-        },
-      },
-    ],
-    comparison: ["ppo", "grpo", "trpo"],
+    comparison: ["grpo", "rloo", "tailrl"],
   },
   tailrl: {
     name: "Tail-Likelihood Reinforcement Learning",
@@ -185,64 +179,7 @@ const RhoAlgorithms = {
         },
       },
     ],
-    comparison: ["tailrl", "grpo", "rloo"],
-  },
-  rloo: {
-    name: "REINFORCE Leave-One-Out",
-    short: "Other-sample baseline",
-    lead: "Judge an answer relative to the other attempts at the same problem. Those other scores provide a baseline without training a critic.",
-    equation: "A_i = r_i - \\frac{\\sum_{j\\ne i}r_j}{n-1}",
-    terms: [
-      ["n", "Number of sampled outcomes in this group."],
-      ["A_i", "Reward relative to the other samples."],
-      ["r_i", "The training score of answer i."],
-      [
-        "j",
-        "An index over the other samples; \\(j\\ne i\\) excludes this answer.",
-      ],
-    ],
-    here: "One categorical policy-gradient step per group. A fixed nonlinear reward map changes the target from expected reward to expected mapped reward.",
-    why: [
-      "A reward of 0.5 might be encouraging on a difficult problem and disappointing on an easy one. A baseline supplies that context. An advantage is the reward minus this comparison value.",
-      "RLOO uses the other answers in the group as the comparison. Leaving the current answer out matters: otherwise that answer would help determine the baseline being subtracted from itself.",
-    ],
-    read: [
-      "For answer \\(i\\), sum the other \\(n-1\\) rewards and divide by \\(n-1\\). Subtract that average from \\(r_i\\). A negative weight is allowed; it is not a negative probability.",
-      "For independent samples from the same policy and a fixed reward function, the other-sample baseline preserves the expected policy gradient. The resulting update still uses \\(A_i\\nabla_\\theta\\log\\pi_\\theta(y_i)\\).",
-    ],
-    shaping: [
-      "A shared additive offset cancels exactly. Multiplying scores by a positive constant multiplies the advantages by that constant. A nonlinear map changes the relative gaps and therefore the expected-reward objective.",
-      "Normal scores fitted separately to each group are a different case: an answer’s training score now depends on its companions. The usual fixed-reward unbiasedness argument no longer applies directly. No Gaussian reward assumption is needed.",
-    ],
-    transfer:
-      "In sequence-level RL, the group contains multiple completions of one prompt. An easy prompt’s answers should not serve as the baseline for an unrelated hard prompt. RLOO removes the need for a learned baseline, but the extra completions still cost generation time.",
-    citation: "Ahmadian et al. · §2.3, leave-one-out estimator",
-    cases: [
-      {
-        title: "Too few rare successes",
-        text: "Use a small group and a rare excellent outcome. Many groups contain only poor answers and produce no relative signal. Increase the group size and compare several seeds.",
-        settings: {
-          preset: "rare",
-          n: 8,
-        },
-      },
-      {
-        title: "All scores tied",
-        text: "No answer beats its companions, so every advantage is zero. Normalizing the tied scores cannot invent an ordering.",
-        settings: {
-          preset: "zero",
-        },
-      },
-      {
-        title: "A nonlinear score map",
-        text: "Compare Identity and Square on two modes. Inspect the weights in a sampled group before interpreting the changed bars.",
-        settings: {
-          preset: "bimodal",
-          transform: "square",
-        },
-      },
-    ],
-    comparison: ["rloo", "grpo", "tailrl"],
+    comparison: ["tailrl", "grpo", "maxrl"],
   },
   maxrl: {
     name: "Maximum Likelihood Reinforcement Learning",
@@ -297,7 +234,7 @@ const RhoAlgorithms = {
         },
       },
     ],
-    comparison: ["maxrl", "rloo", "tailrl"],
+    comparison: ["maxrl", "tailrl", "rloo"],
   },
   pkpo: {
     name: "Pass@K Policy Optimization",
@@ -365,250 +302,5 @@ const RhoAlgorithms = {
       },
     ],
     comparison: ["pkpo", "rloo", "tailrl"],
-  },
-  reinforce: {
-    name: "REINFORCE",
-    short: "Raw-reward gradient",
-    lead: "Weight each sampled answer’s log-probability gradient by its reward. Average those contributions to update the policy, then sample again.",
-    equation:
-      "\\begin{aligned} g_i &= r_i\\nabla_{\\theta}\\log\\pi_{\\theta}(y_i), \\\\[4pt] \\Delta\\theta &= \\frac{\\eta}{n}\\sum_{i=1}^{n}g_i. \\end{aligned}",
-    terms: [
-      ["r_i", "The training reward for sample i."],
-      [
-        "\\pi_\\theta(y_i)",
-        "Probability of sampled answer y_i under the current policy.",
-      ],
-      ["\\theta", "The outcome logits in this example."],
-      ["\\eta", "Learning rate."],
-      ["y_i", "A sampled outcome."],
-      ["g_i", "One sample’s reward-weighted score gradient."],
-      ["n", "Number of samples in the group."],
-    ],
-    here: "No baseline, critic or temporal credit assignment. Rewards come from one terminal action.",
-    why: [
-      "Suppose an answer checker can give you a score but cannot tell you how to edit the model. REINFORCE uses a different piece of information: the model knows how its own parameters affect the probability of the answer it just generated.",
-      "Its target is expected reward: the average score you would obtain over many fresh attempts. One lucky high score is only one noisy observation of that target.",
-    ],
-    read: [
-      "\\(\\nabla_\\theta\\log\\pi_\\theta(y_i)\\) is a direction in parameter space that increases the log probability of sampled answer \\(y_i\\). You do not differentiate the checker.",
-      "Multiply that direction by the reward. Average over the \\(n\\) samples, then take a step of size \\(\\eta\\). The expectation of this estimate is the gradient of expected reward for a fixed reward function.",
-    ],
-    shaping: [
-      "An increasing nonlinear map still preserves which individual score is better, but changes how much better. Squaring scores makes the gap between 0.5 and 1 larger relative to the gap between 0 and 0.5. The target becomes \\(\\mathbb{E}[f(R)]\\).",
-      "Adding a constant does not change the expected gradient. It can change a sampled update because the sampled score gradients need not cancel. In the balanced three-answer example below they do cancel; repeated random groups in the full visualizer need not.",
-    ],
-    transfer:
-      "For a language model, an answer’s log probability is the sum of its token log probabilities. A final score can weight that whole sequence. This does not identify which reasoning step caused success. Shared parameters can also change answers that were never sampled.",
-    citation: "Williams (1992) · statistical gradient estimation",
-    cases: [
-      {
-        title: "A reward offset",
-        text: "Run several seeds with Identity and Positive affine. Compare fluctuations and mean reward. The affine option also doubles score gaps; under the default Adam optimizer that scale cancels, so any difference comes from the added constant. Switch to SGD under Advanced to see the scale effect as well.",
-        settings: {
-          preset: "narrow",
-          transform: "affine",
-        },
-      },
-      {
-        title: "A missing outcome",
-        text: "With exactly zero support, an excellent answer cannot be sampled in this app. Giving existing answers larger weights does not create that missing support.",
-        settings: {
-          preset: "missing",
-        },
-      },
-      {
-        title: "False high scores",
-        text: "A poor answer that the judge scores highly gets a positive gradient weight. Its final probability change also depends on the other samples. Track poor-output probability.",
-        settings: {
-          preset: "right",
-          judge: "falsepositive",
-        },
-      },
-    ],
-    comparison: ["reinforce", "rloo", "grpo"],
-  },
-  a2c: {
-    name: "Advantage Actor–Critic",
-    short: "Learned value baseline",
-    lead: "Keep a running prediction of how rewarding an attempt will be. The actor learns from the difference between the observed reward and that prediction.",
-    equation:
-      "\\begin{aligned} A_i &= r_i-V, \\\\[4pt] V &\\leftarrow V+\\alpha(\\bar{r}-V). \\end{aligned}",
-    terms: [
-      ["V", "The learned scalar value of the single state."],
-      [
-        "\\alpha",
-        "Critic learning rate, separate from the actor learning rate.",
-      ],
-      ["\\bar r", "Mean training reward of the sampled group."],
-      ["r_i", "The training score of this answer."],
-      ["A_i", "Reward minus the current value prediction."],
-    ],
-    here: "A synchronous one-state actor–critic. The visualizer’s critic starts at zero; the worked example sets it to 0.4. It updates after the actor. Mnih et al. provide the actor–critic foundations; this does not reproduce their asynchronous A3C architecture.",
-    why: [
-      "The actor is the policy that produces answers. The critic predicts the return before the answer is known. Their difference is an advantage: better or worse than expected.",
-      "Here there is one prompt and one terminal action, so the critic is just a number. This makes it possible to see baseline learning without introducing a second neural network.",
-    ],
-    read: [
-      "Compute \\(A_i=r_i-V\\) using the critic value from before this group. Use those advantages for the actor’s policy-gradient step.",
-      "Then move \\(V\\) a fraction \\(\\alpha\\) of the way toward the group’s mean reward \\(\\bar r\\). The actor learning rate \\(\\eta\\) and critic learning rate \\(\\alpha\\) control different updates.",
-    ],
-    shaping: [
-      "The critic must use the same score units as the actor. If scores change from 0–1 to 1–3, an unchanged critic prediction is temporarily badly calibrated. A smaller critic learning rate takes longer to catch up.",
-      "A baseline independent of the sampled action preserves the expected one-step gradient even if inaccurate; its quality affects variance. In a multi-step task, bootstrapping from an approximate critic introduces additional estimation issues absent here.",
-    ],
-    transfer:
-      "A full actor–critic predicts value from a state or token prefix and deals with future rewards. Our terminal-answer example has neither delayed rewards nor temporal bootstrapping. The cited Mnih paper develops asynchronous actor–critic foundations; this synchronous scalar example is not an A3C reproduction.",
-    citation:
-      "Mnih et al. · actor–critic foundations; terminal specialization shown here",
-    cases: [
-      {
-        title: "A slow critic",
-        text: "Start on shifted scores with a slow critic. Inspect the baseline and critic values alongside the sampled weights. Its prediction begins in the wrong score range.",
-        settings: {
-          preset: "bell",
-          transform: "affine",
-          criticRate: 0.01,
-        },
-      },
-      {
-        title: "A noisy judge",
-        text: "The critic learns the average observed score, including judge errors. A good baseline does not fix a bad reward signal.",
-        settings: {
-          preset: "right",
-          judge: "noise",
-        },
-      },
-      {
-        title: "A narrow score range",
-        text: "Small meaningful differences can coexist with a large baseline error. Compare A2C with RLOO, which recomputes a baseline from the current group.",
-        settings: {
-          preset: "narrow",
-        },
-      },
-    ],
-    comparison: ["a2c", "reinforce", "rloo"],
-  },
-  trpo: {
-    name: "Trust Region Policy Optimization",
-    short: "KL-constrained step",
-    lead: "Choose a promising update, then check how far it moves the whole policy. Reject or shorten the step if its probability change exceeds a budget.",
-    equation:
-      "\\begin{gathered} \\underset{\\theta}{\\operatorname{maximize}}\\quad L(\\theta) \\\\[4pt] \\operatorname{KL}\\!\\left(\\pi_{\\mathrm{old}}\\,\\|\\,\\pi_{\\theta}\\right)\\le\\delta. \\end{gathered}",
-    terms: [
-      ["L", "The sampled probability-ratio surrogate."],
-      [
-        "\\delta",
-        "Allowed average KL; exact across outcomes in this one-state example.",
-      ],
-      ["\\theta", "Policy parameters."],
-      [
-        "\\pi_{\\mathrm{old}},\\pi_\\theta",
-        "Answer probabilities before and after a proposed update.",
-      ],
-      [
-        "\\operatorname{KL}",
-        "An asymmetric measure of distribution change: \\(\\sum_y p_{\\mathrm{old}}(y)\\log\\frac{p_{\\mathrm{old}}(y)}{p_\\theta(y)}\\). Zero means the distributions agree.",
-      ],
-    ],
-    here: "Exact categorical Fisher-vector products with 0.01 damping, up to 12 conjugate-gradient iterations and up to 12 line-search trials. RLOO supplies the advantages. The step uses its KL budget rather than the shared learning rate.",
-    why: [
-      "A fixed learning rate measures distance in parameter space. The same parameter step can have very different effects on probabilities, especially near rare outcomes.",
-      "TRPO instead measures policy change with KL divergence. Its natural-gradient direction uses the Fisher matrix, which describes local sensitivity of probabilities to parameter changes.",
-    ],
-    read: [
-      "\\(L(\\theta)\\) is a sampled surrogate: a local estimate of improvement using the old rollout distribution. The KL constraint limits the change from \\(\\pi_{\\mathrm{old}}\\) to the new policy.",
-      "The practical procedure computes a direction, proposes a step and backtracks: try a shorter step until the surrogate improves and the measured KL fits the budget. If none passes, keep the old policy. The population guarantee and this sampled procedure have different assumptions.",
-    ],
-    shaping: [
-      "In an ideal natural-gradient calculation with a fixed KL budget, a positive scaling of all advantages cancels when the step is normalized to the budget. Finite precision and line-search tolerances can affect this in practice.",
-      "A nonlinear map can change the direction itself. KL only measures movement; it does not determine whether the rewards are truthful. In this app TRPO uses RLOO advantages and ignores the common actor learning rate.",
-    ],
-    transfer:
-      "Here Fisher-vector products and KL sum over all 21 actions. Large models need tractable estimates across states and actions; Fisher-vector products avoid constructing a full parameter-sized matrix. Small KL on training states does not establish improvement on unseen prompts.",
-    citation: "Schulman et al. (2015) · §§4–6 and Appendix C",
-    cases: [
-      {
-        title: "A noisy small group",
-        text: "Compare the accepted step and KL with true mean reward. A surrogate improvement on a few samples can disagree with population improvement.",
-        settings: {
-          preset: "rare",
-          n: 8,
-        },
-      },
-      {
-        title: "No direction to follow",
-        text: "When every advantage is zero, the procedure has no improving direction and leaves the policy alone.",
-        settings: {
-          preset: "zero",
-        },
-      },
-      {
-        title: "A larger KL budget",
-        text: "A larger budget permits more movement; it does not require it. Compare the change in poor and excellent probabilities.",
-        settings: {
-          preset: "bell",
-          trustKL: 0.05,
-        },
-      },
-    ],
-    comparison: ["trpo", "ppo", "rloo"],
-  },
-  elite: {
-    name: "Elite selection baseline",
-    short: "Top-20% likelihood heuristic",
-    lead: "Keep the highest-scoring part of a group and increase its likelihood. This selection baseline uses rank, discarding the size of reward gaps.",
-    equation:
-      "A_i = \\begin{cases} \\dfrac{n}{|\\mathcal{E}|}, & i\\in\\mathcal{E}, \\\\[5pt] 0, & \\text{otherwise}. \\end{cases}",
-    terms: [
-      [
-        "\\mathcal{E}",
-        "Samples at or above the top-20% cutoff, including ties.",
-      ],
-      ["n", "Number of samples in the group."],
-      ["|\\mathcal E|", "Number selected, including cutoff ties."],
-      ["A_i", "The weight used in the likelihood update."],
-    ],
-    here: "An illustrative selection heuristic, not a full cross-entropy method implementation. All-tied groups are skipped. The linked paper supplies context for quantile-based objectives.",
-    why: [
-      "Select the highest-scoring 20% of samples, rounding the count up and retaining cutoff ties. Use those selected answers as positive examples.",
-      "This is a heuristic comparator. Cross-entropy methods motivate quantile-based selection; here we take one likelihood-gradient step instead of refitting the distribution.",
-    ],
-    read: [
-      "\\(\\mathcal E\\) is the selected set. Give each selected sample weight \\(n/|\\mathcal E|\\), so averaging over all \\(n\\) samples is equivalent to averaging the log-likelihood gradient over the elites.",
-      "Non-selected samples have zero direct weight. Their probabilities can still fall when the policy increases selected answers and renormalizes. If all scores tie, this implementation skips the group.",
-    ],
-    shaping: [
-      "Any strictly increasing map preserves the selected set if ties are unchanged. Original scores, squares and positive affine scores therefore give the same update for a fixed sampled group here.",
-      "A decreasing map reverses preferences. A map that merges previously different scores into ties can change selection too. Rank invariance is narrower than saying reward transformations never matter.",
-    ],
-    transfer:
-      "Selecting good model completions and fitting their likelihood resembles rejection-based fine-tuning. It provides no direct signal about how much better one selected answer is than another. Diversity, judge reliability and whether discarded attempts contain useful behaviors need separate evaluation.",
-    citation:
-      "Goschin et al. (2013) · quantile-based CEM context; heuristic implemented here",
-    cases: [
-      {
-        title: "Reversed ranking",
-        text: "The reciprocal map rewards lower original quality. Selection follows the supplied training scores; inspect the direction of true mean reward.",
-        settings: {
-          preset: "bell",
-          transform: "reciprocal",
-        },
-      },
-      {
-        title: "A narrow winner",
-        text: "Compare how quickly probability concentrates with a mean-reward method. Fast concentration is not evidence that the judge found a reliable strategy.",
-        settings: {
-          preset: "spike",
-        },
-      },
-      {
-        title: "Every score tied",
-        text: "An arbitrary tie break would introduce a preference unsupported by reward. This implementation uses zero weights instead.",
-        settings: {
-          preset: "zero",
-        },
-      },
-    ],
-    comparison: ["elite", "rloo", "grpo"],
   },
 };

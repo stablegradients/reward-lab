@@ -29,10 +29,6 @@ const LabContent = {
     noise: "Gaussian noise · σ = 0.12, scores clipped",
     falsepositive: "False high scores · 2% of poor outputs",
   },
-  optimizers: {
-    adam: "Adam · β 0.9 / 0.999",
-    sgd: "SGD · plain gradient step",
-  },
   metrics: {
     mean: "Mean true reward",
     high: "Excellent probability · ≥ 0.9",
@@ -81,6 +77,7 @@ const LabContent = {
     bell: "A broad middle with small probabilities near both extremes.",
     uniform: "Every output position starts equally likely.",
     right: "Mostly poor outputs, with a long but low-probability right tail.",
+    binary: "Two outcomes only: reward 0 with 95% probability and reward 1 with 5%. Every algorithm sees the same two scores, so TailRL and MaxRL take identical steps.",
     left: "Most mass is already near high quality.",
     bimodal: "Two modes are present before any learning happens.",
     valley: "65% at 0.2, 5% at 0.6, 30% at 1. A deliberate hollow middle.",

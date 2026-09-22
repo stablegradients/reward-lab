@@ -9,8 +9,6 @@ const files = [
   "rho.css",
   "visualizer.js",
   "theme.js",
-  "audio.js",
-  "video.js",
   "curves.js",
   "algorithms.js",
   "core.js",

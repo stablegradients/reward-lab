@@ -215,6 +215,42 @@ for (const preset of Object.keys(C.presets).filter((x) => x !== "custom"))
   for (let t = 0; t < 3; t++) C.update(m, Array(21).fill(250), 0.1, false, "adam");
   near(m.theta[0], 0.3, 1e-9); // bias-corrected Adam: one lr per step at constant gradient
 }
+// A batch of prompts: advantages are computed within each prompt's group and
+// the plain-SGD step is the mean gradient over every sampled answer.
+{
+  const s = C.create({
+    preset: "bell",
+    n: 8,
+    batch: 4,
+    lr: 0.1,
+    optimizer: "sgd",
+    seed: 5,
+    methods: ["rloo", "grpo", "pkpo"],
+  });
+  const before = C.forward(s.models.rloo).slice(),
+    theta = s.models.rloo.theta.slice();
+  C.step(s);
+  for (const m of ["rloo", "grpo", "pkpo"]) {
+    const { adv, transformed } = s.last[m];
+    assert.equal(adv.length, 32);
+    for (let g = 0; g < 4; g++)
+      vector(
+        adv.slice(g * 8, (g + 1) * 8),
+        C.advantage(transformed.slice(g * 8, (g + 1) * 8), m, 4),
+      );
+  }
+  const { ids, adv } = s.last.rloo,
+    meanAdv = C.mean(adv);
+  for (let j = 0; j < 21; j++) {
+    let g = -before[j] * meanAdv;
+    ids.forEach((id, i) => {
+      if (id === j) g += adv[i] / 32;
+    });
+    near(s.models.rloo.theta[j] - theta[j], 0.1 * g, 1e-12);
+  }
+  assert.equal(s.last.tailrl, undefined); // methods outside cfg.methods are not simulated
+  vector(s.history[1].methods.tailrl.p, s.history[0].methods.tailrl.p);
+}
 console.log(
-  `PASS: exact finite-batch gradients, neural/shared derivatives, invariances, ties, ${cases} simulation combinations, and Adam scale invariance.`,
+  `PASS: exact finite-batch gradients, neural/shared derivatives, invariances, ties, ${cases} simulation combinations, Adam scale invariance, and batched prompt groups.`,
 );

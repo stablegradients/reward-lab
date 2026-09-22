@@ -28,6 +28,7 @@ const RewardLab = (() => {
     bell: "Bell shaped",
     uniform: "Uniform",
     right: "Mostly low, long right tail",
+    binary: "Binary · 5% success",
     left: "Mostly high, long left tail",
     bimodal: "Two separated modes",
     valley: "Middle almost empty",
@@ -139,6 +140,8 @@ const RewardLab = (() => {
             return 1;
           case "right":
             return Math.exp(-7 * x);
+          case "binary":
+            return x === 0 ? 0.95 : x === 1 ? 0.05 : 0;
           case "left":
             return Math.exp(-7 * (1 - x));
           case "bimodal":
@@ -283,14 +286,19 @@ const RewardLab = (() => {
           { length: n - 1 },
           (_, j) => combination(j, k - 2) / denominator,
         );
-      return a.map(
-        (r, i) =>
-          k *
-          a
-            .filter((_, j) => j !== i)
-            .sort((u, v) => u - v)
-            .reduce((s, v, j) => s + weights[j] * Math.max(0, r - v), 0),
-      );
+      // Sort once; each sample's partners are the sorted group with itself
+      // removed, so partner rank j is the sorted position, less one past it.
+      const order = a.map((r, i) => ({ r, i })).sort((u, v) => u.r - v.r);
+      return a.map((r, i) => {
+        let sum = 0,
+          j = 0;
+        for (const o of order) {
+          if (o.i === i) continue;
+          sum += weights[j] * Math.max(0, r - o.r);
+          j++;
+        }
+        return k * sum;
+      });
     }
     if (method === "elite") {
       if (a.every((x) => x === a[0])) return a.map(() => 0);
@@ -527,6 +535,23 @@ const RewardLab = (() => {
     setParameters(model, initial);
     return { norm, kl: 0, accepted: false, backtracks: 12 };
   }
+  // Exact expected maximum original reward of k independent draws, for each
+  // k in ks: sum over outcomes of r * (F(r)^k - F(r-)^k).
+  function bestCurve(p, rewards, ks) {
+    const pairs = p
+      .map((p, i) => ({ p, r: rewards[i] }))
+      .sort((a, b) => a.r - b.r);
+    return ks.map((k) => {
+      let cum = 0,
+        best = 0;
+      for (const a of pairs) {
+        const old = cum;
+        cum += a.p;
+        best += a.r * (Math.pow(Math.min(1, cum), k) - Math.pow(old, k));
+      }
+      return best;
+    });
+  }
   function metrics(p, rewards, k = 16) {
     const pairs = p
       .map((p, i) => ({ p, r: rewards[i] }))
@@ -557,6 +582,8 @@ const RewardLab = (() => {
       transform: "identity",
       model: "independent",
       n: 32,
+      batch: 1,
+      dataset: 262144,
       k: 4,
       evalK: 16,
       lr: 0.15,
@@ -624,12 +651,18 @@ const RewardLab = (() => {
       ),
     });
   }
+  // One update draws cfg.batch prompts from a dataset of identical prompts
+  // and n answers per prompt. Advantages are computed within each prompt's
+  // group; the gradient averages over every sampled answer, which is the
+  // batch mean of the per-prompt gradients. The policy is shared across
+  // prompts, so the dataset size only sets the epoch length.
   function step(s) {
     const { cfg } = s,
-      n = cfg.n;
-    const uniforms = Array.from({ length: n }, () => s.random()),
-      noise = Array.from({ length: n }, () => [s.random(), s.random()]);
-    for (const method of methods) {
+      n = cfg.n,
+      total = n * cfg.batch;
+    const uniforms = Array.from({ length: total }, () => s.random()),
+      noise = Array.from({ length: total }, () => [s.random(), s.random()]);
+    for (const method of cfg.methods ?? methods) {
       const model = s.models[method],
         p = forward(model),
         ids = uniforms.map((u) => {
@@ -662,9 +695,18 @@ const RewardLab = (() => {
           ? judged.map((r) => (r >= 0.9 ? 1 : 0))
           : transform(judged, cfg.transform, cfg.lambda, s.frozen, cfg);
       const baseline = model.critic || 0,
-        adv = advantage(transformed, method, cfg.k, baseline),
-        grad = p.map((x) => -x * mean(adv));
-      ids.forEach((id, i) => (grad[id] += adv[i] / n));
+        adv = [];
+      for (let g = 0; g < cfg.batch; g++)
+        adv.push(
+          ...advantage(
+            transformed.slice(g * n, (g + 1) * n),
+            method,
+            cfg.k,
+            baseline,
+          ),
+        );
+      const grad = p.map((x) => -x * mean(adv));
+      ids.forEach((id, i) => (grad[id] += adv[i] / total));
       const diagnostics =
         method === "ppo" || method === "grpo"
           ? ppoUpdate(model, p, ids, adv, cfg)
@@ -708,6 +750,7 @@ const RewardLab = (() => {
     advantage,
     combination,
     metrics,
+    bestCurve,
     create,
     step,
     forward,

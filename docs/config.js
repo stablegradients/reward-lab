@@ -24,6 +24,8 @@ const LabConfig = (() => {
   };
   const numbers = {
     n: [2, 64, true],
+    batch: [1, 1024, true],
+    dataset: [1, 1073741824, true],
     k: [1, 64, true],
     evalK: [1, 128, true],
     lr: [0.001, 2],
