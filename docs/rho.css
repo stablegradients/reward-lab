@@ -261,9 +261,6 @@ h1 {
 .distribution-label select {
   width: 100%;
 }
-.contexts-label {
-  width: 222px;
-}
 .transport {
   display: flex;
   gap: 7px;
@@ -281,7 +278,6 @@ h1 {
   padding: 8px 14px;
   background: var(--paper);
   font-size: 12px;
-  white-space: nowrap;
 }
 #advanced > summary::-webkit-details-marker {
   display: none;

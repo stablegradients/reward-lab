@@ -11,9 +11,6 @@ const R = vm.runInContext("RewardLab", ctx),
   V = vm.runInContext("LabConfig", ctx),
   close = (a, b, tol = 1e-9) =>
     assert.ok(Math.abs(a - b) < tol, `${a} != ${b}`);
-for (const bad of [{ batch: 0 }, { batch: 2.5 }, { batch: 1025 }, { dataset: 0 }])
-  assert.throws(() => V.validate(bad));
-assert.equal(V.validate({ batch: 256, dataset: 262144 }).batch, 256);
 for (const tailAt of [0.1, 0.7, 0.9])
   for (const jump of [0, 0.5, 1]) {
     const cfg = V.validate({

@@ -42,18 +42,6 @@ for (const s of best.series) {
   assert(Math.abs(values[0] - run.history[7].methods[s.id].metrics.mean) < 1e-12 && values.at(-1) <= 1 + 1e-12, "best of one draw is the mean");
 }
 assert.equal(RhoCurves.best(run.history, ["grpo"], 500, run.rewards).step, 7); // clamps to recorded history
-assert.equal(RewardLab.bestKs.length, RhoCurves.ks.length);
-// With several answer sets the chart must use the per-prompt average, not the mixture's own best-of-k.
-{
-  const multi = RewardLab.create({ preset: "bell", seed: 4, contexts: 64, batch: 64, n: 8, optimizer: "adam", lr: 0.5, methods: ["grpo"] });
-  for (let i = 0; i < 30; i++) RewardLab.step(multi);
-  const frame = multi.history[30].methods.grpo,
-    plotted = RhoCurves.best(multi.history, ["grpo"], 30, multi.rewards).series[0].points.map((p) => p.value),
-    mixture = RewardLab.bestCurve(frame.p, multi.rewards, RhoCurves.ks);
-  assert.deepEqual(plotted, Array.from(frame.bestK));
-  assert(Math.abs(plotted[0] - frame.metrics.mean) < 1e-12);
-  assert(plotted[3] < mixture[3] - 1e-6, "per-prompt best-of-4 is below the mixture's");
-}
 // Reward axes zoom: 90% of the smallest plotted value up to 1; entropy keeps 0..ln 21.
 const meanPlot = RhoCurves.data(run.history, RewardLab.methods, "mean", 7, 100);
 const minMean = Math.min(...meanPlot.series.flatMap((s) => s.points.map((p) => p.value)));

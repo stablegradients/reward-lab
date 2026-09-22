@@ -31,15 +31,15 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="assets/favicon.svg?v=rho" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/katex/katex.min.css?v=50d9c78e03" />
-    <link rel="stylesheet" href="rho.css?v=c3550bd01c" />
+    <link rel="stylesheet" href="rho.css?v=0c6f21f72e" />
     <script src="assets/katex/katex.min.js?v=10a91b479c" defer></script>
     <script src="assets/katex/contrib/auto-render.min.js?v=e5372d199b" defer></script>
-    <script src="core.js?v=2f79918822" defer></script>
-    <script src="config.js?v=020255e606" defer></script>
+    <script src="core.js?v=ec595d5a79" defer></script>
+    <script src="config.js?v=6e2afb7a44" defer></script>
     <script src="content.js?v=a057e63b4d" defer></script>
     <script src="algorithms.js?v=534b255504" defer></script>
-    <script src="curves.js?v=7b3d555d7f" defer></script>
-    <script src="visualizer.js?v=b6b57beea1" defer></script>
+    <script src="curves.js?v=540ddae71e" defer></script>
+    <script src="visualizer.js?v=a1d97c7f52" defer></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -72,23 +72,13 @@
           <div>
             <h1>Policy updates</h1>
             <p>
-              The task: a dataset of <span id="task-dataset">262,144</span>
-              prompts, each with 21 possible answers carrying fixed rewards
-              between 0 and 1. Which answers score well differs between
-              prompts: the dataset has <span id="task-contexts">262,144</span>
-              answer sets, prompts with the same answer set share a policy, and
-              prompts with different ones share nothing. Every prompt starts
-              from the same reward distribution. Each update draws
-              <span id="task-batch">256</span> prompts, samples
-              <span id="task-n">32</span> answers per prompt, weights each
-              prompt’s group with the algorithm’s rule, and averages the
-              gradient for every policy in the batch; one pass over the dataset
-              takes <span id="task-epoch">1,024</span> updates, so each answer
-              set is visited about <span id="task-visits">1</span>
-              <span id="task-visits-unit">time</span> per epoch. Charts show
-              averages over prompts. All algorithms start from the same
-              distribution and share the random draws; they differ in how they
-              turn each group’s scores into weights.
+              The task: one prompt with 21 possible answers, each carrying a
+              fixed reward between 0 and 1. Every update samples
+              <span id="task-n">32</span> answers from the current policy,
+              scores them, weights the group with the algorithm’s rule, and
+              shifts probability toward the better ones. All algorithms start
+              from the same distribution and share the random draws; they
+              differ in how they turn each group’s scores into weights.
             </p>
           </div>
         </div>
@@ -98,16 +88,6 @@
             <div class="distribution-picker">
               <select id="preset"></select>
             </div>
-          </div>
-          <div class="distribution-label contexts-label">
-            <label for="contexts">Answer sets</label>
-            <select id="contexts">
-              <option value="1">1 · all prompts share answers</option>
-              <option value="16">16</option>
-              <option value="256">256</option>
-              <option value="4096">4,096</option>
-              <option value="262144" selected>262,144 · every prompt distinct</option>
-            </select>
           </div>
           <div class="transport">
             <button id="play" class="primary">▶ Play</button
@@ -146,15 +126,7 @@
                 <label>Reward map<select id="transform"></select></label>
                 <label>Judge<select id="judge"></select></label>
                 <label
-                  >Prompts per update<select id="batch">
-                    <option>1</option>
-                    <option>16</option>
-                    <option>64</option>
-                    <option selected>256</option>
-                  </select></label
-                >
-                <label
-                  >Answers per prompt<select id="n">
+                  >Answers per update<select id="n">
                     <option>8</option>
                     <option selected>32</option>
                     <option>64</option>
@@ -287,8 +259,8 @@
         </div>
         <div class="reading-key">
           <p>
-            <b>Height = probability, averaged over prompts.</b> Each bar is
-            one reward level; which answer carries it differs by prompt.
+            <b>Height = probability.</b> Each bar is one possible outcome,
+            placed at its fixed reward.
           </p>
           <span><i></i> Start <i class="current-key"></i> Current</span>
         </div>

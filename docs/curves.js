@@ -107,15 +107,12 @@ const RhoCurves = (() => {
   }
   function best(history, methods, step, rewards) {
     const at = Math.max(0, Math.min(step, history.length - 1));
-    // The frame carries best-of-k averaged over prompts; a mixture policy's
-    // own best-of-k would overstate it, so only fall back to that for frames
-    // without one.
-    const series = methods.map((id) => {
-      const frame = history[at].methods[id];
-      const values =
-        frame.bestK ?? RewardLab.bestCurve(frame.p, rewards, ks);
-      return { id, points: ks.map((k, i) => ({ k, value: values[i] })) };
-    });
+    const series = methods.map((id) => ({
+      id,
+      points: RewardLab.bestCurve(history[at].methods[id].p, rewards, ks).map(
+        (value, i) => ({ k: ks[i], value }),
+      ),
+    }));
     return {
       step: at,
       ks,
