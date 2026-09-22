@@ -451,8 +451,6 @@
         : sim.step >= horizon
           ? "↻ Replay"
           : "▶ Play";
-    $("previous").disabled = shown === 0;
-    $("step").disabled = shown >= horizon && shown === sim.step;
     renderCurves();
   }
   function schedule(callback, delay) {
@@ -492,22 +490,7 @@
     playing = true;
     advance();
   };
-  $("step").onclick = () => {
-    pause();
-    if (shown < sim.step) shown++;
-    else if (sim.step < horizon) {
-      RewardLab.step(sim);
-      shown = sim.step;
-    }
-    render();
-  };
   $("reset").onclick = () => reset();
-  function replayTo(requested) {
-    pause();
-    shown = Math.max(0, Math.min(requested, sim.step));
-    render();
-  }
-  $("previous").onclick = () => replayTo(shown - 1);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) pause();
   });
