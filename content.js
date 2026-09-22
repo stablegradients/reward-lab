@@ -77,7 +77,7 @@ const LabContent = {
     bell: "A broad middle with small probabilities near both extremes.",
     uniform: "Every output position starts equally likely.",
     right: "Mostly poor outputs, with a long but low-probability right tail.",
-    binary: "Two outcomes only: reward 0 with 95% probability and reward 1 with 5%. Every algorithm sees the same two scores, so TailRL and MaxRL take identical steps.",
+    binary: "Two outcomes only: reward 0 with 99% probability and reward 1 with 1%. Every algorithm sees the same two scores, so TailRL and MaxRL take identical steps.",
     left: "Most mass is already near high quality.",
     bimodal: "Two modes are present before any learning happens.",
     valley: "65% at 0.2, 5% at 0.6, 30% at 1. A deliberate hollow middle.",

@@ -28,7 +28,7 @@ const RewardLab = (() => {
     bell: "Bell shaped",
     uniform: "Uniform",
     right: "Mostly low, long right tail",
-    binary: "Binary · 5% success",
+    binary: "Binary · 1% success",
     left: "Mostly high, long left tail",
     bimodal: "Two separated modes",
     valley: "Middle almost empty",
@@ -141,7 +141,7 @@ const RewardLab = (() => {
           case "right":
             return Math.exp(-7 * x);
           case "binary":
-            return x === 0 ? 0.95 : x === 1 ? 0.05 : 0;
+            return x === 0 ? 0.99 : x === 1 ? 0.01 : 0;
           case "left":
             return Math.exp(-7 * (1 - x));
           case "bimodal":
